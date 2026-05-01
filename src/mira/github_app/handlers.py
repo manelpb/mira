@@ -33,6 +33,15 @@ _REVIEW_KEYWORDS = {"review", "review this", "review this pr"}
 _REJECT_KEYWORDS = {"reject", "dismiss", "resolve", "ignore"}
 _REVIEW_REST_KEYWORDS = {"review-rest", "review rest", "rest", "continue"}
 
+_THREAD_REPLY_ENV = Environment(
+    loader=FileSystemLoader(
+        str(Path(__file__).resolve().parents[1] / "llm" / "prompts" / "templates")
+    ),
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
+_THREAD_REPLY_TEMPLATE = _THREAD_REPLY_ENV.get_template("thread_reply.jinja2")
+
 PAUSE_LABEL = "mira-paused"
 _PAUSE_KEYWORDS = {"pause"}
 _RESUME_KEYWORDS = {"resume"}
@@ -241,14 +250,7 @@ async def _handle_thread_freeform_reply(
         # review, just a short conversational classification.
         config = load_config()
         llm = LLMProvider(llm_config_for("indexing", config.llm))
-        env = Environment(
-            loader=FileSystemLoader(
-                str(Path(__file__).resolve().parents[1] / "llm" / "prompts" / "templates")
-            ),
-            trim_blocks=True,
-            lstrip_blocks=True,
-        )
-        template = env.get_template("thread_reply.jinja2")
+        template = _THREAD_REPLY_TEMPLATE
         prompt = template.render(
             user_reply=user_reply or "(empty)",
             original_suggestion=original_suggestion,
