@@ -154,3 +154,58 @@ async def test_get_installation_token_http_error(
 
     with pytest.raises(WebhookError, match="401"):
         await app_auth.get_installation_token(999)
+
+
+async def test_get_app_slug_returns_slug(
+    app_auth: GitHubAppAuth, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`GET /app` 200 → returns the slug field."""
+
+    async def mock_get(self, url, **kwargs):  # noqa: ANN001, ANN003
+        class MockResponse:
+            status_code = 200
+
+            def json(self) -> dict:
+                return {"slug": "acme-mira", "name": "ACME Mira"}
+
+        return MockResponse()
+
+    import httpx
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+
+    slug = await app_auth.get_app_slug()
+    assert slug == "acme-mira"
+
+
+async def test_get_app_slug_http_error_returns_none(
+    app_auth: GitHubAppAuth, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Non-200 response returns None instead of raising — caller falls back."""
+
+    async def mock_get(self, url, **kwargs):  # noqa: ANN001, ANN003
+        class MockResponse:
+            status_code = 401
+            text = "Bad credentials"
+
+        return MockResponse()
+
+    import httpx
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+
+    assert await app_auth.get_app_slug() is None
+
+
+async def test_get_app_slug_network_error_returns_none(
+    app_auth: GitHubAppAuth, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A network exception returns None; the server should still start."""
+    import httpx
+
+    async def mock_get(self, url, **kwargs):  # noqa: ANN001, ANN003
+        raise httpx.ConnectError("network down")
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+
+    assert await app_auth.get_app_slug() is None

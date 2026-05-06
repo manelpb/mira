@@ -262,26 +262,17 @@ class GitHubProvider(BaseProvider):
             return
 
         # Build inline comments (no retry needed for local formatting).
-        #
-        # We always set ``side="RIGHT"`` (the post-PR / new-file side of
-        # the diff). Without it GitHub sometimes returns a vague 422
-        # "An internal error occurred" instead of accepting the comment
-        # — the modern review-comments API treats ``side`` as effectively
-        # required when using ``line`` rather than the deprecated
-        # ``position``. Multi-line comments need ``start_side`` too.
         review_comments: list[dict[str, str | int]] = []
         for comment in result.comments:
             body = _format_comment_body(comment, bot_name=bot_name)
             rc: dict[str, str | int] = {
                 "path": comment.path,
                 "body": body,
-                "side": "RIGHT",
             }
             # PyGithub uses 'line' for single-line, 'start_line'+'line' for multi-line
             if comment.end_line and comment.end_line > comment.line:
                 rc["start_line"] = comment.line
                 rc["line"] = comment.end_line
-                rc["start_side"] = "RIGHT"
             else:
                 rc["line"] = comment.line
 
@@ -345,18 +336,13 @@ class GitHubProvider(BaseProvider):
                     }
                     if "line" in rc:
                         kwargs["line"] = rc["line"]
-                    if "side" in rc:
-                        kwargs["side"] = rc["side"]
                     if "start_line" in rc:
                         kwargs["start_line"] = rc["start_line"]
-                    if "start_side" in rc:
-                        kwargs["start_side"] = rc["start_side"]
                     logger.info(
-                        "POST /comments commit=%s path=%s line=%s side=%s body_len=%d",
+                        "POST /comments commit=%s path=%s line=%s body_len=%d",
                         getattr(latest_commit, "sha", "?")[:8],
                         kwargs.get("path"),
                         kwargs.get("line"),
-                        kwargs.get("side"),
                         len(kwargs.get("body", "")),
                     )
                     pr.create_review_comment(**kwargs)

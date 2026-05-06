@@ -216,23 +216,13 @@ class WalkthroughResult:
 
         if self.sequence_diagram:
             diagram = self.sequence_diagram.strip()
-            # Only render if it looks like valid Mermaid
+            # Only render if it looks like valid Mermaid. Quote-wrapping for
+            # node labels with dots/slashes is handled upstream in
+            # `_sanitize_mermaid` — re-running it here would re-introduce
+            # the nested-quote bug it just fixed.
             if diagram and any(
                 diagram.startswith(k) for k in ("graph ", "flowchart ", "sequenceDiagram")
             ):
-                # Sanitise: wrap node names with special chars in quotes
-                import re
-
-                lines = []
-                for line in diagram.splitlines():
-                    # Fix bare node names with dots/slashes — wrap in quotes
-                    line = re.sub(
-                        r"(\w+\.[\w./\-]+)",
-                        lambda m: f'"{m.group(0)}"' if '"' not in m.group(0) else m.group(0),
-                        line,
-                    )
-                    lines.append(line)
-                diagram = "\n".join(lines)
                 parts.append("")
                 parts.append("```mermaid")
                 parts.append(diagram)

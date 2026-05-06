@@ -1121,6 +1121,7 @@ class AppDatabase:
                     "updated_at=NOW()",
                     (owner, repo, pr_number, sha),
                 )
+            self._pg_conn.commit()
 
     def delete_pr_review_progress(self, owner: str, repo: str, pr_number: int) -> None:
         if self._backend == "sqlite":

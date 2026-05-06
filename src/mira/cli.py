@@ -236,7 +236,12 @@ def review(
     required=True,
     help="Webhook secret from GitHub App settings",
 )
-@click.option("--bot-name", envvar="MIRA_BOT_NAME", default="miracodeai", help="Bot @mention name")
+@click.option(
+    "--bot-name",
+    envvar="MIRA_BOT_NAME",
+    default=None,
+    help="Bot @mention name. If unset, auto-detected from the GitHub App's own slug.",
+)
 @click.option("--verbose", is_flag=True, help="Enable verbose logging")
 def serve(
     host: str,
@@ -244,11 +249,13 @@ def serve(
     app_id: str,
     private_key: str,
     webhook_secret: str,
-    bot_name: str,
+    bot_name: str | None,
     verbose: bool,
 ) -> None:
     """Run the Mira GitHub App webhook server."""
     try:
+        import asyncio
+
         import uvicorn
 
         from mira.github_app.auth import GitHubAppAuth
@@ -274,6 +281,15 @@ def serve(
             raise click.ClickException(f"Private key file not found: {key_path}") from None
 
     app_auth = GitHubAppAuth(app_id=app_id, private_key=private_key)
+
+    # Auto-detect the bot @mention from the App's own slug when the user
+    # didn't override it. Fall back to "miracodeai" if the lookup fails so
+    # the server still starts on a transient network blip — users will see
+    # the warning in the log and can set MIRA_BOT_NAME explicitly.
+    if not bot_name:
+        bot_name = asyncio.run(app_auth.get_app_slug()) or "miracodeai"
+        click.echo(f"Detected bot @mention: @{bot_name}")
+
     app = create_app(
         app_auth=app_auth,
         webhook_secret=webhook_secret,

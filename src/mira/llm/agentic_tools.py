@@ -237,7 +237,7 @@ class AgenticToolExecutor:
         # Keep this small — we're scanning files via the source_fetcher so
         # each file is a network call. The intent is to find a known signal,
         # not crawl the whole repo.
-        max_files_to_scan = 60
+        max_files_to_scan = 15
 
         for cand in candidates:
             if len(hits) >= _MAX_GREP_HITS or files_scanned >= max_files_to_scan:

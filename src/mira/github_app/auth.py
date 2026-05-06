@@ -80,6 +80,36 @@ class GitHubAppAuth:
         logger.debug("Cached installation token for %d", installation_id)
         return new_token
 
+    async def get_app_slug(self) -> str | None:
+        """Fetch this GitHub App's own slug — the `@mention` handle users type.
+
+        Calls `GET /app`, authed with the JWT we already generate for
+        installation-token requests. The slug is fixed for the lifetime of
+        the App, so callers should cache the result. Returns ``None`` if
+        the call fails so callers can fall back to a configured default.
+        """
+        app_jwt = self._generate_jwt()
+        url = f"{_GITHUB_API_URL}/app"
+        headers = {
+            "Authorization": f"Bearer {app_jwt}",
+            "Accept": "application/vnd.github+json",
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(url, headers=headers, timeout=10.0)
+                if resp.status_code != 200:
+                    logger.warning(
+                        "Failed to fetch app slug (HTTP %d): %s",
+                        resp.status_code,
+                        resp.text,
+                    )
+                    return None
+                slug = resp.json().get("slug")
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("Failed to fetch app slug: %s", exc)
+            return None
+        return slug if isinstance(slug, str) and slug else None
+
     async def list_installations(self) -> list[dict[str, object]]:
         """List all installations for this GitHub App."""
         app_jwt = self._generate_jwt()
