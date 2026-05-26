@@ -384,7 +384,6 @@ class ReviewEngine:
         pr_info = await self.provider.get_pr_info(pr_url)
         self._pr_info = pr_info
 
-        # ── Run thread resolution and diff fetch in parallel ──
         async def _resolve_threads() -> tuple[
             int, int, list[UnresolvedThread], list[ThreadDecision]
         ]:
@@ -403,14 +402,12 @@ class ReviewEngine:
 
         threads_checked, llm_resolved, unresolved_threads, thread_decisions = thread_result
 
-        # Count lines changed for metrics
         _lines_changed = sum(
             1 for line in diff_text.splitlines() if line.startswith("+") or line.startswith("-")
         )
 
-        # ── Post placeholder comment immediately so the user sees activity
-        # within a second of opening the PR. The placeholder uses the walkthrough
-        # marker so find_bot_comment can locate it as a fallback. ──
+        # Post a placeholder using the walkthrough marker so users see activity
+        # immediately and find_bot_comment can locate the comment as a fallback.
         placeholder_id: int | None = None
         if not self.dry_run:
             try:
@@ -459,11 +456,8 @@ class ReviewEngine:
         except Exception as exc:
             logger.warning("Failed to compute review round: %s", exc)
 
-        # Incremental diff for round 2+: if we have a stored last-reviewed
-        # SHA, fetch only what's been pushed since then. This prevents the
-        # bot from "discovering" issues in untouched files between rounds —
-        # which feels to authors like the bot withheld findings on round 1.
-        # Falls back silently to the full diff if anything goes wrong.
+        # Round 2+: fetch only commits since the last review so we don't
+        # re-flag untouched files as if we withheld findings the first time.
         if review_round >= 2 and pr_info.head_sha:
             try:
                 from mira.dashboard.api import _app_db
@@ -505,9 +499,6 @@ class ReviewEngine:
                     exc,
                 )
 
-        # Pull the team conventions text the indexer extracted from
-        # CONTRIBUTING.md / AGENTS.md / STYLE.md so the LLM knows
-        # repo-specific style rules.
         team_conventions = ""
         try:
             from mira.dashboard.api import _app_db
@@ -552,7 +543,6 @@ class ReviewEngine:
                 try:
                     stats = build_review_stats(result.comments)
 
-                    # Get cross-repo blast radius
                     cross_repo_blast: list[dict] | None = None
                     try:
                         from mira.index.relationships import RelationshipStore
@@ -610,7 +600,6 @@ class ReviewEngine:
             llm_resolved,
         )
 
-        # Only post if there are comments
         if result.comments:
             if self.dry_run:
                 logger.info(
@@ -625,7 +614,6 @@ class ReviewEngine:
 
         result.thread_decisions = thread_decisions
 
-        # Record review event for metrics
         try:
             from mira.models import Severity
 
@@ -651,7 +639,6 @@ class ReviewEngine:
                 duration_ms=duration,
                 categories=categories,
             )
-            # Run lightweight feedback synthesis
             try:
                 from mira.analysis.feedback import synthesize_rules
 
@@ -746,7 +733,6 @@ class ReviewEngine:
         if not patch.files:
             return ReviewResult(summary="No files to review.")
 
-        # Apply user filter rules (excludes, etc.)
         filtered = filter_files(patch.files, self.config.filter)
         if not filtered:
             return ReviewResult(
@@ -784,8 +770,6 @@ class ReviewEngine:
 
         # filtered is the full ranked set; selected is what we'll actually review
         filtered = selected
-
-        # ── Run walkthrough and context building in parallel ──
 
         async def _generate_walkthrough() -> WalkthroughResult | None:
             if not self.config.review.walkthrough:
@@ -829,21 +813,8 @@ class ReviewEngine:
                     if doc_context:
                         ctx = ctx + "\n\n" + doc_context
 
-                    # Two distinct conditions, easily confused:
-                    #
-                    #   `index_has_data_for_changed` — at least one of the PR's
-                    #     changed files has a summary in the store. Drives JIT
-                    #     fallback for cross-file context: when this is False,
-                    #     parse imports + fetch HEAD content live.
-                    #
-                    #   `index_is_truly_empty` — the store has zero summaries
-                    #     for *any* file in the repo. Drives the user-visible
-                    #     "your repo isn't indexed" walkthrough nudge.
-                    #
-                    # The first can be False on a well-indexed repo (PR touches
-                    # only README.md, which the indexer skips) — that case must
-                    # not trigger the nudge, otherwise we tell users their
-                    # indexed repo isn't indexed.
+                    # `_jit_needed` and `_index_was_empty` aren't the same signal —
+                    # see the field comments in __init__ before changing this.
                     index_has_data_for_changed = bool(store.get_summaries(changed_paths))
                     self._jit_needed = not index_has_data_for_changed
                     self._index_was_empty = not bool(store.all_paths())
@@ -867,9 +838,6 @@ class ReviewEngine:
                                         "JIT: tree fetch failed: %s",
                                         exc,
                                     )
-                            # Stash for the agentic tool-use path so
-                            # _review_chunk can give the LLM read_file /
-                            # grep_repo without re-fetching the tree.
                             self._agentic_source_fetcher = source_fetcher
                             self._agentic_repo_tree = sorted(tree_paths) if tree_paths else []
                             jit = await build_jit_cross_file_context(
@@ -941,8 +909,7 @@ class ReviewEngine:
 
             self._walkthrough_notify_task = _asyncio.create_task(_notify_caller())
 
-        # ── Fetch decision-archaeology history in parallel with code context.
-        # The provider may not exist (CLI / dry-run); in that case we just skip.
+        # No-op on CLI / dry-run runs that have no provider.
         async def _fetch_file_history() -> dict:
             pr_info = getattr(self, "_pr_info", None)
             if pr_info is None or self.provider is None:
@@ -1038,15 +1005,9 @@ class ReviewEngine:
                         team_conventions=team_conventions,
                     )
                     raw_response = ""
-                    # Agentic tool-use path: only when the static context for
-                    # this PR's changed files is necessarily thin (no summaries
-                    # in the index for those paths). When the repo has summaries
-                    # for the changed files the static block already has the
-                    # full picture, so the extra tool-call hops would just slow
-                    # things down. We use `_jit_needed` (per-PR signal) rather
-                    # than `_index_was_empty` (whole-repo signal) so a PR that
-                    # touches files the indexer skipped still gets the agentic
-                    # fallback even on an indexed repo.
+                    # Use the per-PR `_jit_needed` (not the whole-repo
+                    # `_index_was_empty`) so files the indexer skipped still get
+                    # the agentic fallback inside an otherwise-indexed repo.
                     use_agentic = (
                         self.config.review.agentic_tools
                         and getattr(self, "_jit_needed", False)
@@ -1104,7 +1065,6 @@ class ReviewEngine:
                 summaries.append(summary_text)
         all_comments.extend(security_comments)
 
-        # Classify severity
         all_comments = [classify_severity(c) for c in all_comments]
 
         # Noise filter — pass review_round so round 2+ raises the floor.
