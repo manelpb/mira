@@ -63,7 +63,6 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # Fire-and-forget: index repos that don't have an index yet
         backfill_task = asyncio.create_task(backfill_missing_indexes(app_auth))
         backfill_task.add_done_callback(
             lambda t: (
@@ -71,8 +70,6 @@ def create_app(
             )
         )
 
-        # OSV.dev vulnerability poller — runs hourly across the org's
-        # package_manifests. No-ops on SQLite-only deployments.
         from mira.security.poller import run_forever as run_vuln_poller
 
         vuln_task = asyncio.create_task(run_vuln_poller())
@@ -96,8 +93,7 @@ def create_app(
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    # `/webhook` is a deprecated alias kept for GitHub Apps created before
-    # the `/github/webhook` rename.
+    # `/webhook` is a deprecated alias from before the `/github/webhook` rename.
     @app.post("/github/webhook")
     @app.post("/webhook")
     async def webhook(request: Request, background_tasks: BackgroundTasks) -> Response:
@@ -175,7 +171,6 @@ def create_app(
             comment_user_type: str = payload.get("comment", {}).get("user", {}).get("type", "")
             is_pr = "pull_request" in payload.get("issue", {})
 
-            # Ignore bot comments so our own walkthrough mentions don't self-trigger.
             if comment_user_type == "Bot" or comment_user == f"{bot_name}[bot]":
                 logger.debug("Ignoring comment from bot (%s)", comment_user)
                 return Response(
@@ -285,11 +280,7 @@ def create_app(
 
     register_dashboard(app)
 
-    # Serve the built UI as static files with SPA fallback. The Dockerfile
-    # builds the React app into `ui/mira/dist/` and copies it next to the
-    # backend at /app/ui_dist; locally, fall back to ui/mira/dist relative to
-    # the repo root. If neither exists, the API still works — only the UI
-    # routes will 404.
+    # UI dist resolution order: env override → Docker image path → repo-local.
     ui_dist_env = os.environ.get("MIRA_UI_DIST")
     candidates: list[Path] = []
     if ui_dist_env:
@@ -311,10 +302,7 @@ def create_app(
 
         @app.get("/{full_path:path}")
         async def spa_fallback(full_path: str) -> Response:
-            # Reserve API/webhook namespaces — return 404 instead of swallowing
-            # them with the SPA shell. Webhook + dashboard routes are
-            # registered above and take precedence by route ordering, but a
-            # bad path like /api/nonexistent should 404 cleanly.
+            # Don't let the SPA shell swallow misspelled API/webhook paths.
             if full_path.startswith("api/") or full_path in {"webhook", "health"}:
                 raise HTTPException(status_code=404)
             file_path = ui_dist / full_path
