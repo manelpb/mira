@@ -96,19 +96,8 @@ def create_app(
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    # Both paths route to the same handler.
-    # `/github/webhook` is the canonical path going forward — the namespace
-    # leaves room for `/gitlab/webhook`, `/bitbucket/webhook`, etc. without
-    # breaking GitHub installations.
-    # `/webhook` stays as a deprecated alias so existing GitHub Apps that
-    # were created before the rename keep working.
-    #
-    # Stacking two `@app.post(...)` decorators registers two independent
-    # routes — FastAPI's `app.post(path)` registers the route as a side
-    # effect and returns the original callable unchanged, so the second
-    # application sees the same function and registers it again at the new
-    # path. Don't collapse these into a single decorator with a regex; the
-    # explicit form is clearer and lets us deprecate `/webhook` cleanly.
+    # `/webhook` is a deprecated alias kept for GitHub Apps created before
+    # the `/github/webhook` rename.
     @app.post("/github/webhook")
     @app.post("/webhook")
     async def webhook(request: Request, background_tasks: BackgroundTasks) -> Response:
@@ -186,11 +175,7 @@ def create_app(
             comment_user_type: str = payload.get("comment", {}).get("user", {}).get("type", "")
             is_pr = "pull_request" in payload.get("issue", {})
 
-            # Ignore ANY bot-authored comment. This prevents self-triggering
-            # loops where our own PR walkthrough contains "@{bot_name}" in a
-            # footer hint and the webhook mistakes it for a user mention. The
-            # exact-login check below remains as a secondary safeguard in case
-            # `user.type` is absent on some event payloads.
+            # Ignore bot comments so our own walkthrough mentions don't self-trigger.
             if comment_user_type == "Bot" or comment_user == f"{bot_name}[bot]":
                 logger.debug("Ignoring comment from bot (%s)", comment_user)
                 return Response(
@@ -200,7 +185,6 @@ def create_app(
                 )
 
             if is_pr and f"@{bot_name}" in comment_body:
-                # Extract command word after @bot_name
                 cmd_match = re.search(
                     rf"@{re.escape(bot_name)}\s+(\w+)", comment_body, re.IGNORECASE
                 )
@@ -248,7 +232,6 @@ def create_app(
                     media_type="application/json",
                 )
 
-        # Indexing events: installation, repos added, push to default branch
         if event == "installation" and action == "created":
             background_tasks.add_task(handle_installation, payload, app_auth, bot_name)
             return Response(
@@ -298,9 +281,6 @@ def create_app(
             media_type="application/json",
         )
 
-    # ── Dashboard API + UI ───────────────────────────────────────
-    # Register all `/api/*` dashboard routes onto this same app, so a single
-    # process serves webhooks, REST API, and the bundled UI.
     from mira.dashboard.api import register_dashboard
 
     register_dashboard(app)
@@ -323,7 +303,6 @@ def create_app(
     ui_dist = next((p for p in candidates if p.is_dir()), None)
 
     if ui_dist is not None:
-        # Mount static assets at /assets so the UI's bundled JS/CSS are served.
         assets_dir = ui_dist / "assets"
         if assets_dir.is_dir():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
