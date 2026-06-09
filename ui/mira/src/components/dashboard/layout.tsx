@@ -166,7 +166,7 @@ export function DashboardLayout() {
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
-                        className="relative before:absolute before:left-0 before:top-1/2 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-r-full before:bg-sidebar-primary before:opacity-0 data-[active=true]:before:opacity-100 data-[active=true]:font-semibold"
+                        className="data-[active=true]:font-semibold"
                       >
                         <NavLink to={item.to} end={item.to === "/"}>
                           <item.icon />
