@@ -487,6 +487,8 @@ class AppDatabase:
             assert self._pg_conn is not None
             with self._pg_conn.cursor() as cur:
                 cur.execute("UPDATE users SET password_hash = %s WHERE id = %s", (pw_hash, user_id))
+            # autocommit today, but this keeps the write safe if that changes.
+            self._pg_conn.commit()
 
     def record_login(self, user_id: int) -> None:
         """Stamp a user's last-login time (called on each successful login)."""
@@ -501,6 +503,8 @@ class AppDatabase:
             assert self._pg_conn is not None
             with self._pg_conn.cursor() as cur:
                 cur.execute("UPDATE users SET last_login_at = %s WHERE id = %s", (now, user_id))
+            # autocommit today, but this keeps the write safe if that changes.
+            self._pg_conn.commit()
 
     def list_users(self) -> list[User]:
         if self._backend == "sqlite":
