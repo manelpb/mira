@@ -11,7 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { ConfirmButton } from "@/components/ui/confirm-button"
 import { Input } from "@/components/ui/input"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
@@ -44,8 +44,6 @@ export function WebhookFormPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
-  const [confirmOpen, setConfirmOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [testResult, setTestResult] = useState<{
     ok: boolean
@@ -125,15 +123,10 @@ export function WebhookFormPage() {
     }
   }
 
-  const confirmDelete = async () => {
+  const remove = async () => {
     if (!id) return
-    setDeleting(true)
-    try {
-      await api.deleteWebhook(id)
-      navigate("/settings/webhooks")
-    } finally {
-      setDeleting(false)
-    }
+    await api.deleteWebhook(id)
+    navigate("/settings/webhooks")
   }
 
   const test = async () => {
@@ -286,29 +279,22 @@ export function WebhookFormPage() {
                   )}
                   Send test
                 </Button>
-                <Button
+                <ConfirmButton
                   variant="ghost"
-                  onClick={() => setConfirmOpen(true)}
                   className="text-destructive"
+                  dialogTitle="Delete webhook?"
+                  dialogDescription={`"${name || "Untitled"}" will stop receiving events. This can't be undone.`}
+                  confirmLabel="Delete"
+                  destructive
+                  onConfirm={remove}
                 >
                   <Trash2 className="mr-2 h-4 w-4" /> Delete
-                </Button>
+                </ConfirmButton>
               </div>
             )}
           </div>
         </>
       )}
-
-      <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title="Delete webhook?"
-        description={`"${name || "Untitled"}" will stop receiving events. This can't be undone.`}
-        confirmLabel="Delete"
-        destructive
-        loading={deleting}
-        onConfirm={confirmDelete}
-      />
     </div>
   )
 }
