@@ -331,7 +331,7 @@ class ReviewEngine:
         async def _resolve_threads() -> tuple[
             int, int, list[UnresolvedThread], list[ThreadDecision]
         ]:
-            if not self.bot_name:
+            if not self.bot_name or not self.config.review.auto_resolve_conversations:
                 return 0, 0, [], []
             try:
                 assert self.provider is not None
