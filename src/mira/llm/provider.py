@@ -350,6 +350,21 @@ class LLMProvider:
         self._cached_headers = headers
         return dict(headers)
 
+    def _apply_reasoning(self, body: dict) -> None:
+        """Enable extended thinking when a reasoning effort is configured.
+
+        OpenRouter exposes a unified ``reasoning.effort`` knob that it
+        normalizes across providers. Anthropic models reject a custom
+        ``temperature`` while thinking is on, so we drop it and let the
+        provider default it. No-op when reasoning is off, keeping the request
+        byte-for-byte identical to before.
+        """
+        effort = self.config.reasoning_effort
+        if not effort or effort == "off":
+            return
+        body["reasoning"] = {"effort": effort}
+        body.pop("temperature", None)
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=30),
@@ -373,6 +388,7 @@ class LLMProvider:
         }
         if json_mode:
             body["response_format"] = {"type": "json_object"}
+        self._apply_reasoning(body)
 
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
@@ -426,6 +442,7 @@ class LLMProvider:
             "temperature": temperature if temperature is not None else self.config.temperature,
             "max_tokens": self.config.max_tokens,
         }
+        self._apply_reasoning(body)
 
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
@@ -544,6 +561,7 @@ class LLMProvider:
             "temperature": temperature if temperature is not None else self.config.temperature,
             "max_tokens": self.config.max_tokens,
         }
+        self._apply_reasoning(body)
 
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(

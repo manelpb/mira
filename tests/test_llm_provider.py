@@ -138,6 +138,50 @@ class TestComplete:
             assert "response_format" not in body
 
     @pytest.mark.asyncio
+    async def test_reasoning_effort_sets_reasoning_and_drops_temperature(self):
+        config = LLMConfig(model="test-model", reasoning_effort="high")
+        provider = LLMProvider(config)
+
+        mock_resp = _mock_httpx_response(_make_response_json("ok"))
+
+        with patch("mira.llm.provider.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await provider.complete([{"role": "user", "content": "hi"}])
+
+            call_kwargs = mock_client.post.call_args
+            body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+            assert body["reasoning"] == {"effort": "high"}
+            # Anthropic rejects a custom temperature while thinking — we drop it.
+            assert "temperature" not in body
+
+    @pytest.mark.asyncio
+    async def test_reasoning_off_leaves_body_unchanged(self):
+        for effort in (None, "off"):
+            config = LLMConfig(model="test-model", reasoning_effort=effort)
+            provider = LLMProvider(config)
+
+            mock_resp = _mock_httpx_response(_make_response_json("ok"))
+
+            with patch("mira.llm.provider.httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.post = AsyncMock(return_value=mock_resp)
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=False)
+                mock_client_cls.return_value = mock_client
+
+                await provider.complete([{"role": "user", "content": "hi"}])
+
+                call_kwargs = mock_client.post.call_args
+                body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+                assert "reasoning" not in body
+                assert "temperature" in body
+
+    @pytest.mark.asyncio
     async def test_no_usage_tracked_when_missing(self):
         config = LLMConfig(model="test-model")
         provider = LLMProvider(config)
