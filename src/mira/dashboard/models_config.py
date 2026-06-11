@@ -29,6 +29,9 @@ THINKING_MODES: list[dict[str, str]] = [
     {"value": "low", "label": "Low"},
     {"value": "medium", "label": "Medium"},
     {"value": "high", "label": "High"},
+    # DeepSeek's top "max" level (sent as "xhigh" on OpenRouter, which rejects
+    # "max"). Not every provider supports it.
+    {"value": "max", "label": "Max"},
 ]
 THINKING_MODE_VALUES = {m["value"] for m in THINKING_MODES}
 
@@ -88,9 +91,12 @@ def get_review_model(config: LLMConfig, db_value: str | None = None) -> str:
 def get_review_thinking_mode(config: LLMConfig, db_value: str | None = None) -> str | None:
     """Resolve the review thinking mode: DB → config.review_reasoning_effort → None.
 
-    Normalizes "off"/"" to None so the provider treats them as "no reasoning".
+    A DB value of "off" or "" counts as unset and falls through to the
+    mira.yaml-level setting — saving the models form always writes this key
+    (default "off"), so a stored "off" must not permanently shadow a config
+    override. "off" anywhere normalizes to None ("no reasoning").
     """
-    resolved = db_value if db_value else config.review_reasoning_effort
+    resolved = db_value if (db_value and db_value != "off") else config.review_reasoning_effort
     if not resolved or resolved == "off":
         return None
     return resolved

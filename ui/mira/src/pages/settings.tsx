@@ -383,9 +383,10 @@ export function SettingsPage() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Extended reasoning budget for reviews. Higher modes improve
-                review depth on cheaper models at the cost of latency and
-                tokens. Not supported by every model or provider.
+                Extended reasoning budget for reviews — improves depth on
+                capable models at the cost of latency and tokens. Works on
+                OpenRouter and Bedrock (Claude); on other endpoints it's
+                skipped automatically when unsupported.
               </p>
             </div>
             <div className="flex items-center gap-3">

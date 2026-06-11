@@ -47,6 +47,13 @@ class TestGetReviewThinkingMode:
     def test_off_and_empty_normalize_to_none(self, value: str):
         assert get_review_thinking_mode(LLMConfig(), value) is None
 
+    @pytest.mark.parametrize("db_value", ["off", "", None])
+    def test_off_db_value_does_not_shadow_config(self, db_value: str | None):
+        # Saving the models form always writes "off" by default; that must not
+        # permanently disable a mira.yaml-level reasoning effort.
+        cfg = LLMConfig(review_reasoning_effort="high")
+        assert get_review_thinking_mode(cfg, db_value) == "high"
+
 
 class TestLLMConfigFor:
     def test_review_picks_up_thinking_mode(self, in_memory_db: AppDatabase):

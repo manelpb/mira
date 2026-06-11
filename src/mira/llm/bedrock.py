@@ -170,10 +170,10 @@ class BedrockProvider:
         # unset, so drop it when enabled. Budget must stay below maxTokens.
         effort = self.config.reasoning_effort
         if effort and effort != "off":
-            budget = {"low": 2048, "medium": 8192, "high": 16384}.get(effort, 8192)
+            budget = {"low": 2048, "medium": 8192, "high": 16384, "max": 32768}.get(effort, 8192)
             budget = min(budget, max(1024, max_out - 1024))
             kwargs["additionalModelRequestFields"] = {
-                "reasoning_config": {"type": "enabled", "budget_tokens": budget}
+                "thinking": {"type": "enabled", "budget_tokens": budget}
             }
             kwargs["inferenceConfig"].pop("temperature", None)
         if system:

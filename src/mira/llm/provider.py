@@ -329,6 +329,10 @@ class LLMProvider:
         # Models that 400 on a forced tool_choice (deepseek thinking mode);
         # remembered so we send tool_choice="auto" instead.
         self._no_forced_tool_choice: set[str] = set()
+        # Models that 400 on a reasoning effort (it's opt-in and applied to
+        # whatever model is selected); remembered so we drop it and review
+        # without thinking rather than failing.
+        self._no_reasoning: set[str] = set()
 
     def _chat_url(self) -> str:
         return f"{self.config.base_url.rstrip('/')}/chat/completions"
@@ -362,6 +366,12 @@ class LLMProvider:
         effort = self.config.reasoning_effort
         if not effort or effort == "off":
             return
+        if body.get("model") in self._no_reasoning:
+            return
+        # "max" is DeepSeek's native top level; OpenRouter rejects it and uses
+        # "xhigh" for the same thing, so translate when targeting OpenRouter.
+        if effort == "max" and _is_openrouter(self.config.base_url):
+            effort = "xhigh"
         body["reasoning"] = {"effort": effort}
         body.pop("temperature", None)
 
@@ -459,6 +469,16 @@ class LLMProvider:
                 logger.info("Model %s rejected forced tool_choice; retrying with auto", api_model)
                 self._no_forced_tool_choice.add(api_model)
                 body["tool_choice"] = "auto"
+                resp = await client.post(self._chat_url(), headers=self._build_headers(), json=body)
+            if resp.status_code == 400 and "reasoning" in body and "reasoning" in resp.text.lower():
+                # Reasoning effort unsupported on this model/endpoint — drop it
+                # and review without thinking instead of failing the review.
+                logger.info("Model %s rejected reasoning effort; retrying without it", api_model)
+                self._no_reasoning.add(api_model)
+                body.pop("reasoning", None)
+                body["temperature"] = (
+                    temperature if temperature is not None else self.config.temperature
+                )
                 resp = await client.post(self._chat_url(), headers=self._build_headers(), json=body)
             if resp.status_code != 200:
                 raise LLMError(f"LLM API error {resp.status_code}: {resp.text}")
