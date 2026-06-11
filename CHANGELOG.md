@@ -4,6 +4,23 @@ All notable changes to Mira are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-06-11
+
+### Added
+
+- **Outbound webhooks** — POST to Slack, Microsoft Teams, or a generic JSON endpoint when a review finishes, a review fails, a high-severity finding lands, or a repo finishes indexing. Configured on the admin Settings page (dedicated list + add/edit pages). Delivery is best-effort and SSRF-guarded (private/internal addresses are refused), so a slow or misconfigured endpoint can't delay or break a review.
+- **User management** — self-service password change and admin password reset (as proper pages, not modals), a sidebar user dropdown with account switching, DiceBear avatars, and last-sign-in tracking shown in the users table.
+- **Per-page browser tab titles** — each dashboard page now sets its own `document.title` instead of a single static title.
+
+### Fixed
+
+- **Thinking-mode models no longer fail reviews** — models that reject a forced `tool_choice` (e.g. deepseek thinking mode, which returns a 400) are detected and retried with `tool_choice: "auto"`, and the model is remembered so later calls skip the doomed attempt. Fixes #82.
+
+### Changed
+
+- **Evals gate the release build** — the LLM eval suite now runs on a release tag and the container is only built/pushed if it passes. The noisy threshold-based scorecard moved to a separate nightly `benchmark` job (and a `benchmark` pytest marker) so it's tracked without gating releases.
+- The dashboard API client was split into per-domain modules (internal refactor, no behaviour change).
+
 ## [0.2.3] — 2026-06-08
 
 ### Added
