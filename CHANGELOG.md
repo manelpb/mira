@@ -4,6 +4,18 @@ All notable changes to Mira are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-06-14
+
+### Added
+
+- **`exclude_files` apply to indexing** — `filter.exclude_patterns` now governs the index as well as review, so committed vendor dirs, generated SDKs, and test data can be kept out of indexing without burning tokens on them. The same globs that exclude a file from review exclude it from indexing; the dashboard's per-repo file count reflects the exclusions too. Closes #97.
+- **Indexing file-size limit** — new `index.max_file_size` (bytes, default 1 MB) skips any file above the limit before it reaches the summarizer. Lower it to keep indexing cheap on large codebases with big fixtures or generated files; `0` disables the limit. Replaces the previous hard-coded 1 MB tarball cap and now also covers the per-file fetch path. Closes #98.
+
+### Fixed
+
+- **Indexing no longer drops a whole batch on one malformed file** — summarization responses with unescaped backslashes (e.g. DeepSeek emitting PHP namespaces like `\App\Models` or Windows paths inside JSON strings) are repaired before parsing, so a single bad string no longer fails `json.loads` and discards every file in the batch. Parsing is also lenient about raw control characters. Closes #96.
+- **Indexing no longer crashes on a null symbol field** — a model emitting an explicit `"signature": null` (or null `kind` / `description`) was inserting `NULL` into a `NOT NULL` column and aborting the file. Those fields are now coerced to their defaults, and symbols with no name are skipped. Part of #96.
+
 ## [0.3.1] — 2026-06-11
 
 ### Added
@@ -167,6 +179,9 @@ Initial public release.
 - `handle_push_index` now updates `updated_at` after incremental re-indexing
   so the "Indexed X ago" timestamp tracks reality.
 
+[0.4.0]: https://github.com/miracodeai/mira/releases/tag/v0.4.0
+[0.3.1]: https://github.com/miracodeai/mira/releases/tag/v0.3.1
+[0.3.0]: https://github.com/miracodeai/mira/releases/tag/v0.3.0
 [0.2.3]: https://github.com/miracodeai/mira/releases/tag/v0.2.3
 [0.2.2]: https://github.com/miracodeai/mira/releases/tag/v0.2.2
 [0.2.1]: https://github.com/miracodeai/mira/releases/tag/v0.2.1
