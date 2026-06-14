@@ -152,14 +152,21 @@ def _build_batches(file_pairs: list[tuple[str, str]]) -> list[list[tuple[str, st
     return batches
 
 
-def _should_index(path: str) -> bool:
-    """Check if a file path should be indexed."""
+def _should_index(path: str, exclude_patterns: list[str] | None = None) -> bool:
+    """Check if a file path should be indexed.
+
+    ``exclude_patterns`` are the user's ``filter.exclude_patterns`` globs; they
+    layer on top of the built-in skip list so indexing honours the same
+    exclusions as review (e.g. committed vendor dirs that bloat indexing cost).
+    """
     filename = os.path.basename(path)
-    # Check skip patterns
     for pattern in _SKIP_PATTERNS:
         if fnmatch(path, pattern) or fnmatch(filename, pattern):
             return False
-    # Check extension
+    if exclude_patterns:
+        for pattern in exclude_patterns:
+            if fnmatch(path, pattern) or fnmatch(filename, pattern):
+                return False
     _, ext = os.path.splitext(filename)
     return ext.lower() in _INDEXABLE_EXTENSIONS
 
@@ -574,7 +581,7 @@ async def index_repo(
 
     # Fetch repo tree
     tree_paths = await _fetch_repo_tree(owner, repo, token, branch)
-    indexable = [p for p in tree_paths if _should_index(p)]
+    indexable = [p for p in tree_paths if _should_index(p, config.filter.exclude_patterns)]
     logger.info(
         "Found %d indexable files in %s/%s (out of %d total)",
         len(indexable),
@@ -990,7 +997,7 @@ async def index_diff(
         return 0
 
     # Filter to indexable files
-    to_index = [p for p in changed_paths if _should_index(p)]
+    to_index = [p for p in changed_paths if _should_index(p, config.filter.exclude_patterns)]
     if not to_index:
         return 0
 

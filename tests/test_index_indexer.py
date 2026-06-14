@@ -51,6 +51,15 @@ class TestShouldIndex:
     def test_unknown_extension(self):
         assert _should_index("README.md") is False
 
+    def test_user_exclude_pattern(self):
+        assert _should_index("app/generated/api.py", ["*/generated/*"]) is False
+
+    def test_user_exclude_glob_by_extension(self):
+        assert _should_index("src/schema.proto", ["*.proto"]) is False
+
+    def test_user_exclude_does_not_affect_others(self):
+        assert _should_index("src/main.py", ["*.proto"]) is True
+
 
 class TestContentHash:
     def test_deterministic(self):
