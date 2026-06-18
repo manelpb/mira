@@ -66,7 +66,7 @@ export function DashboardPage() {
   const [runningReviews, setRunningReviews] = useState<
     import("@/lib/api").RunningReviewModel[]
   >([])
-  const hasActiveReviews = runningReviews.length > 0
+  const hasActiveReviews = runningReviews.some((r) => r.status === "reviewing")
   useEffect(() => {
     const poll = () => {
       api.getRunningReviews({ limit: 10, offset: 0 }).then((res) => setRunningReviews(res.items)).catch(() => {})

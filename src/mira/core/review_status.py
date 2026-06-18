@@ -20,7 +20,13 @@ class ReviewStatus:
 
 
 class ReviewTracker:
-    """Thread-safe tracker for active review jobs."""
+    """Thread-safe tracker for active review jobs.
+
+    Completed/failed jobs older than _TTL_SECONDS are evicted from memory
+    since they are already persisted in the per-repo review events DB.
+    """
+
+    _TTL_SECONDS = 3600  # 1 hour
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -60,11 +66,23 @@ class ReviewTracker:
 
     def get_active(self) -> list[ReviewStatus]:
         with self._lock:
+            self._evict_old()
             return [j for j in self._jobs.values() if j.status == "reviewing"]
 
     def get_all(self) -> list[ReviewStatus]:
         with self._lock:
+            self._evict_old()
             return list(self._jobs.values())
+
+    def _evict_old(self) -> None:
+        now = time.time()
+        self._jobs = {
+            k: j
+            for k, j in self._jobs.items()
+            if j.status == "reviewing"
+            or j.finished_at == 0
+            or (now - j.finished_at) <= self._TTL_SECONDS
+        }
 
 
 tracker = ReviewTracker()

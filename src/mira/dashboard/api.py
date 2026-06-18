@@ -2187,22 +2187,24 @@ def list_all_reviews(limit: int = 20, offset: int = 0) -> PaginatedReviews:
     for repo_record in _app_db.list_repos():
         try:
             store = IndexStore.open(repo_record.owner, repo_record.repo)
-            for e in store.list_review_events(limit=500):
-                key = (f"{repo_record.owner}/{repo_record.repo}", e.pr_number)
-                if key not in seen:
-                    seen.add(key)
-                    items.append(
-                        RunningReviewModel(
-                            repo=f"{repo_record.owner}/{repo_record.repo}",
-                            pr_number=e.pr_number,
-                            pr_title=e.pr_title,
-                            pr_url=e.pr_url,
-                            status="completed",
-                            started_at=e.created_at,
-                            finished_at=e.created_at + (e.duration_ms / 1000),
+            try:
+                for e in store.list_review_events(limit=500):
+                    key = (f"{repo_record.owner}/{repo_record.repo}", e.pr_number)
+                    if key not in seen:
+                        seen.add(key)
+                        items.append(
+                            RunningReviewModel(
+                                repo=f"{repo_record.owner}/{repo_record.repo}",
+                                pr_number=e.pr_number,
+                                pr_title=e.pr_title,
+                                pr_url=e.pr_url,
+                                status="completed",
+                                started_at=e.created_at,
+                                finished_at=e.created_at + (e.duration_ms / 1000),
+                            )
                         )
-                    )
-            store.close()
+            finally:
+                store.close()
         except Exception:
             pass
 
