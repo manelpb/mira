@@ -374,6 +374,7 @@ class ModelOption(BaseModel):
 class ModelsResponse(BaseModel):
     indexing_model: str
     review_model: str
+    secondary_review_model: str
     indexing_options: list[ModelOption]
     review_options: list[ModelOption]
     # Extended-thinking effort for reviews ("off"/"low"/"medium"/"high").
@@ -384,6 +385,7 @@ class ModelsResponse(BaseModel):
 class ModelsUpdate(BaseModel):
     indexing_model: str
     review_model: str
+    secondary_review_model: str = ""
     review_thinking_mode: str = "off"
 
 
@@ -402,11 +404,13 @@ def get_models() -> ModelsResponse:
     config = load_config()
     indexing = get_indexing_model(config.llm, _app_db.get_setting("indexing_model"))
     review = get_review_model(config.llm, _app_db.get_setting("review_model"))
+    secondary = _app_db.get_setting("secondary_review_model") or config.llm.secondary_review_model or ""
     thinking = get_review_thinking_mode(config.llm, _app_db.get_setting("review_thinking_mode"))
 
     return ModelsResponse(
         indexing_model=indexing,
         review_model=review,
+        secondary_review_model=secondary,
         indexing_options=[ModelOption(**m) for m in INDEXING_MODELS],
         review_options=[ModelOption(**m) for m in REVIEW_MODELS],
         review_thinking_mode=thinking or "off",
@@ -533,8 +537,14 @@ def set_models(body: ModelsUpdate) -> dict:
             status_code=400,
             detail=f"{body.review_thinking_mode!r} is not a valid thinking mode.",
         )
+    if body.secondary_review_model and not is_supported(body.secondary_review_model, purpose="review"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{body.secondary_review_model!r} is not a supported review model.",
+        )
     _app_db.set_setting("indexing_model", body.indexing_model)
     _app_db.set_setting("review_model", body.review_model)
+    _app_db.set_setting("secondary_review_model", body.secondary_review_model or "")
     # Clear "off" to "" rather than persisting the literal — "off" is the
     # default, and a stored value would shadow a mira.yaml
     # `review_reasoning_effort` override. "" (not None — the column is NOT NULL)

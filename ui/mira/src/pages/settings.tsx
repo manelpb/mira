@@ -30,6 +30,7 @@ export function SettingsPage() {
 
   const [indexingModel, setIndexingModel] = useState("")
   const [reviewModel, setReviewModel] = useState("")
+  const [secondaryReviewModel, setSecondaryReviewModel] = useState("")
   const [indexingOptions, setIndexingOptions] = useState<
     { value: string; label: string; recommended?: boolean }[]
   >([])
@@ -68,6 +69,7 @@ export function SettingsPage() {
     api.getModels().then((m) => {
       setIndexingModel(m.indexing_model)
       setReviewModel(m.review_model)
+      setSecondaryReviewModel(m.secondary_review_model)
       setIndexingOptions(m.indexing_options)
       setReviewOptions(m.review_options)
       setThinkingMode(m.review_thinking_mode)
@@ -97,7 +99,7 @@ export function SettingsPage() {
 
   const saveModels = async () => {
     setSavingModels(true)
-    await api.saveModels(indexingModel, reviewModel, thinkingMode)
+    await api.saveModels(indexingModel, reviewModel, secondaryReviewModel, thinkingMode)
     setSavingModels(false)
     setModelsSaved(true)
     setTimeout(() => setModelsSaved(false), 2000)
@@ -387,6 +389,38 @@ export function SettingsPage() {
                 capable models at the cost of latency and tokens. Works on
                 OpenRouter and Bedrock (Claude); on other endpoints it's
                 skipped automatically when unsupported.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Secondary Review Model{" "}
+                <span className="text-muted-foreground">(optional)</span>
+              </label>
+              <Select
+                value={secondaryReviewModel}
+                onValueChange={setSecondaryReviewModel}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="None (single-model review)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None</SelectItem>
+                  {reviewOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                      {opt.recommended && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          Recommended
+                        </span>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Run chunked review on a second model in parallel. Findings from
+                both models are union-merged with a confidence boost on
+                cross-model agreement.
               </p>
             </div>
             <div className="flex items-center gap-3">

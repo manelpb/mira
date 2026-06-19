@@ -6,6 +6,7 @@ export const settingsApi = {
     fetchJson<{
       indexing_model: string
       review_model: string
+      secondary_review_model: string
       indexing_options: {
         value: string
         label: string
@@ -19,11 +20,13 @@ export const settingsApi = {
   saveModels: (
     indexing_model: string,
     review_model: string,
+    secondary_review_model: string = "",
     review_thinking_mode: string = "off",
   ) =>
     putJson<{ ok: boolean }>("/api/settings/models", {
       indexing_model,
       review_model,
+      secondary_review_model,
       review_thinking_mode,
     }),
 
