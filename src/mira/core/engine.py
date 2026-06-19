@@ -15,7 +15,7 @@ from mira.config import MiraConfig
 from mira.core.chunker import chunk_files
 from mira.core.context import expand_context
 from mira.core.diff_parser import parse_diff
-from mira.core.ensemble import merge_ensemble_runs
+from mira.core.ensemble import cross_model_merge, merge_ensemble_runs
 from mira.core.file_filter import filter_files
 from mira.core.noise_filter import drop_already_posted, filter_noise
 from mira.core.passes import (
@@ -302,6 +302,7 @@ class ReviewEngine:
         bot_name: str = "miracodeai",
         dry_run: bool = False,
         indexing_llm: LLMProviderProtocol | None = None,
+        secondary_llm: LLMProviderProtocol | None = None,
     ) -> None:
         self.config = config
         self.llm = llm
@@ -316,6 +317,26 @@ class ReviewEngine:
         self._index_was_empty = False
         self._agentic_source_fetcher: object | None = None
         self._agentic_repo_tree: list[str] = []
+        # Optional secondary LLM for multi-model review. When an explicit
+        # instance is passed, use it (enables test injection). Otherwise
+        # auto-construct from config. When neither, chunked review is
+        # single-model.
+        if secondary_llm is not None:
+            self.secondary_llm: LLMProviderProtocol | None = secondary_llm
+        elif config.llm.secondary_review_model:
+            from mira.llm import create_llm
+
+            secondary_cfg = config.llm.model_copy(
+                update={"model": config.llm.secondary_review_model}
+            )
+            self.secondary_llm = create_llm(secondary_cfg)
+            logger.info(
+                "Multi-model review enabled: primary=%s secondary=%s (review cost ~2x)",
+                config.llm.model,
+                config.llm.secondary_review_model,
+            )
+        else:
+            self.secondary_llm = None
 
     async def _post_placeholder_comment(self, pr_info: PRInfo) -> int | None:
         """Post an immediate 'Reviewing this PR...' comment and return its ID.
@@ -996,41 +1017,70 @@ class ReviewEngine:
                         audit.append({"stage": "agentic", "chunk": idx, "calls": executor.call_log})
                     if not raw_response:
                         raw_response = await self.llm.review(messages)
-                    comments, key_issues, summary_text = _parse(raw_response)
 
-                    # Ensemble: fire the extra runs in parallel and keep
-                    # majority-vote findings. The agentic loop (if any) only
-                    # runs once; extras sample the plain review path.
+                    # Parse key issues and summary from primary's first run.
+                    key_issues: list[KeyIssue] = []
+                    summary_text = ""
+                    with contextlib.suppress(ResponseParseError):
+                        _, key_issues, summary_text = _parse(raw_response)
+
+                    # Fire primary extras and secondary (if configured)
+                    # in parallel with each other. The primary's first run
+                    # resolved first; extras and secondary run concurrently.
+                    calls = [
+                        ("primary", _asyncio.ensure_future(_asyncio.sleep(0, result=raw_response)))
+                    ]
                     n_runs = self.config.review.ensemble_runs
                     if n_runs > 1:
-                        extra_raws = await _asyncio.gather(
-                            *[
-                                self.llm.review(
-                                    messages,
-                                    temperature=self.config.review.ensemble_temperature,
+                        for _ in range(n_runs - 1):
+                            calls.append(
+                                (
+                                    "primary_extra",
+                                    _asyncio.ensure_future(
+                                        self.llm.review(
+                                            messages,
+                                            temperature=self.config.review.ensemble_temperature,
+                                        )
+                                    ),
                                 )
-                                for _ in range(n_runs - 1)
-                            ],
-                            return_exceptions=True,
+                            )
+                    if self.secondary_llm is not None:
+                        calls.append(
+                            (
+                                "secondary",
+                                _asyncio.ensure_future(self.secondary_llm.review(messages)),
+                            )
                         )
-                        runs = [comments]
-                        for raw in extra_raws:
-                            if isinstance(raw, BaseException):
-                                logger.warning("Ensemble run failed: %s", raw)
-                                continue
-                            try:
-                                extra_comments, _, _ = _parse(raw)
-                                runs.append(extra_comments)
-                            except ResponseParseError as exc:
-                                logger.warning("Ensemble run failed to parse: %s", exc)
-                        if len(runs) > 1:
-                            before = sum(len(r) for r in runs)
-                            comments = merge_ensemble_runs(runs)
+
+                    results = await _asyncio.gather(*(c[1] for c in calls), return_exceptions=True)
+
+                    # Bucket each result by role.
+                    primary_runs: list[list[ReviewComment]] = []
+                    secondary_comments: list[ReviewComment] = []
+                    for (role, _), result in zip(calls, results, strict=True):
+                        if isinstance(result, BaseException):
+                            logger.warning("Review call (%s) failed: %s", role, result)
+                            continue
+                        try:
+                            cs, _, _ = _parse(result)
+                        except ResponseParseError as exc:
+                            logger.warning("Review call (%s) failed to parse: %s", role, exc)
+                            continue
+                        if role in ("primary", "primary_extra"):
+                            primary_runs.append(cs)
+                        elif role == "secondary":
+                            secondary_comments = cs
+
+                    comments = []
+                    if primary_runs:
+                        if len(primary_runs) > 1:
+                            before = sum(len(r) for r in primary_runs)
+                            comments = merge_ensemble_runs(primary_runs)
                             audit.append(
                                 {
                                     "stage": "ensemble_vote",
                                     "chunk": idx,
-                                    "runs": len(runs),
+                                    "runs": len(primary_runs),
                                     "drafted": before,
                                     "kept": len(comments),
                                 }
@@ -1039,9 +1089,33 @@ class ReviewEngine:
                                 "Ensemble chunk %d: %d comments across %d runs -> %d consensus",
                                 idx + 1,
                                 before,
-                                len(runs),
+                                len(primary_runs),
                                 len(comments),
                             )
+                        else:
+                            comments = primary_runs[0]
+
+                    if secondary_comments:
+                        before = len(comments) + len(secondary_comments)
+                        comments, cross_audit = cross_model_merge(comments, secondary_comments)
+                        audit.append(
+                            {
+                                "stage": "cross_model_merge",
+                                "chunk": idx,
+                                "drafted": before,
+                                "kept": len(comments),
+                                **cross_audit,
+                            }
+                        )
+                        logger.info(
+                            "Cross-model merge chunk %d: %d -> %d (matched=%d primary_only=%d secondary_only=%d)",
+                            idx + 1,
+                            before,
+                            len(comments),
+                            cross_audit["matched"],
+                            cross_audit["primary_only"],
+                            cross_audit["secondary_only"],
+                        )
 
                     return comments, key_issues, summary_text
                 except ResponseParseError as exc:
@@ -1081,9 +1155,12 @@ class ReviewEngine:
 
         all_comments = [classify_severity(c) for c in all_comments]
 
+        filter_cfg = self.config.filter
+        if self.secondary_llm is not None:
+            filter_cfg = filter_cfg.model_copy(update={"max_comments": filter_cfg.max_comments * 2})
         final_comments = filter_noise(
             all_comments,
-            self.config.filter,
+            filter_cfg,
             review_round=review_round,
         )
         _audit_stage(audit, "noise_filter", all_comments, final_comments)
@@ -1146,13 +1223,16 @@ class ReviewEngine:
         indexing_cost = 0
         if self.indexing_llm is not self.llm:
             indexing_cost = self.indexing_llm.usage.get("cost_usd", 0)
+        secondary_cost = 0
+        if self.secondary_llm is not None:
+            secondary_cost = self.secondary_llm.usage.get("cost_usd", 0)
         return ReviewResult(
             comments=final_comments,
             key_issues=all_key_issues,
             summary=summary,
             reviewed_files=len(filtered),
             token_usage=self.llm.usage,
-            cost_usd=round(float(llm_cost) + float(indexing_cost), 6),
+            cost_usd=round(float(llm_cost) + float(indexing_cost) + float(secondary_cost), 6),
             walkthrough=walkthrough,
             reviewed_paths=selected_paths,
             skipped_paths=skipped_paths_only,

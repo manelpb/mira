@@ -26,6 +26,12 @@ class LLMConfig(BaseModel):
     # Optional per-purpose overrides. Fall back to `model` if not set.
     indexing_model: str | None = None
     review_model: str | None = None
+    # Optional second model for the chunked review pass. When set, the
+    # chunked review runs on both `model` and `secondary_review_model` in
+    # parallel; findings are union-merged with a confidence boost on
+    # cross-model agreement. Walkthrough, security pass, and self-critique
+    # stay on the primary. Off by default — unset means current behavior.
+    secondary_review_model: str | None = None
     # Extended-thinking effort for reviews ("low"/"medium"/"high"; None/"off" =
     # no reasoning). `review_reasoning_effort` is the mira.yaml-level override;
     # `reasoning_effort` is the resolved value the provider reads (set by

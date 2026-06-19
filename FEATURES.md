@@ -14,6 +14,7 @@ Mira is a self-hostable, fully open-source AI code reviewer. Everything below is
 - Noise filtering: confidence thresholds, severity sorting, per-PR comment caps
 - Per-language file-type support
 - Confidence score auto-clamped to match findings (a blocker forces "Do not merge" regardless of the LLM's initial read)
+- Optional multi-model review: a second LLM reviews each chunk in parallel with the primary; findings are union-merged with a confidence boost on cross-model agreement
 
 ## Codebase intelligence
 
