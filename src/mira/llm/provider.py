@@ -11,6 +11,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from mira.config import LLMConfig
 from mira.exceptions import LLMError
+from mira.llm.registry import pricing as _model_pricing
 
 logger = logging.getLogger(__name__)
 
@@ -330,6 +331,7 @@ class LLMProvider:
         self.config = config
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
+        self.total_cost_usd = 0.0
         # Models that 400 on a forced tool_choice (deepseek thinking mode);
         # remembered so we send tool_choice="auto" instead.
         self._no_forced_tool_choice: set[str] = set()
@@ -418,8 +420,12 @@ class LLMProvider:
 
         usage = data.get("usage")
         if usage:
-            self.total_prompt_tokens += usage.get("prompt_tokens", 0)
-            self.total_completion_tokens += usage.get("completion_tokens", 0)
+            pt = usage.get("prompt_tokens", 0)
+            ct = usage.get("completion_tokens", 0)
+            self.total_prompt_tokens += pt
+            self.total_completion_tokens += ct
+            _in, _out = _model_pricing(model)
+            self.total_cost_usd += (pt * _in + ct * _out) / 1_000_000
 
         return content
 
@@ -490,8 +496,12 @@ class LLMProvider:
 
         usage = data.get("usage")
         if usage:
-            self.total_prompt_tokens += usage.get("prompt_tokens", 0)
-            self.total_completion_tokens += usage.get("completion_tokens", 0)
+            pt = usage.get("prompt_tokens", 0)
+            ct = usage.get("completion_tokens", 0)
+            self.total_prompt_tokens += pt
+            self.total_completion_tokens += ct
+            _in, _out = _model_pricing(model)
+            self.total_cost_usd += (pt * _in + ct * _out) / 1_000_000
 
         message = data["choices"][0]["message"]
         tool_calls = message.get("tool_calls")
@@ -599,8 +609,12 @@ class LLMProvider:
 
         usage = data.get("usage")
         if usage:
-            self.total_prompt_tokens += usage.get("prompt_tokens", 0)
-            self.total_completion_tokens += usage.get("completion_tokens", 0)
+            pt = usage.get("prompt_tokens", 0)
+            ct = usage.get("completion_tokens", 0)
+            self.total_prompt_tokens += pt
+            self.total_completion_tokens += ct
+            _in, _out = _model_pricing(model)
+            self.total_cost_usd += (pt * _in + ct * _out) / 1_000_000
 
         return data["choices"][0]["message"]
 
@@ -706,9 +720,10 @@ class LLMProvider:
         return len(text) // 4
 
     @property
-    def usage(self) -> dict[str, int]:
+    def usage(self) -> dict[str, int | float]:
         return {
             "prompt_tokens": self.total_prompt_tokens,
             "completion_tokens": self.total_completion_tokens,
             "total_tokens": self.total_prompt_tokens + self.total_completion_tokens,
+            "cost_usd": round(self.total_cost_usd, 6),
         }

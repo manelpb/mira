@@ -139,6 +139,11 @@ class ReviewComment:
     # Which pipeline pass produced this ("main" or "security") — lets eval
     # artifacts attribute FP share per pass. Not posted anywhere.
     source_pass: str = "main"
+    # Which model produced this finding ("primary", "secondary", or empty
+    # string for pre-multi-model code paths). Audit-only — used in the
+    # event stream and the cross_model_merge log; excluded from the
+    # GitHub comment because the posting code picks fields explicitly.
+    _source_model: str = ""
 
 
 def _format_stats_breakdown(stats: dict[Severity, int]) -> str:
@@ -352,6 +357,7 @@ class ReviewResult:
     reviewed_files: int = 0
     skipped_reason: str | None = None
     token_usage: dict[str, int] = field(default_factory=dict)
+    cost_usd: float = 0.0
     walkthrough: WalkthroughResult | None = None
     thread_decisions: list[ThreadDecision] = field(default_factory=list)
     # Surfaced in the walkthrough banner so @mira-bot review-rest can target the rest.

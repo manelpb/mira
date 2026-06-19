@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from mira.core.review_status import tracker
 from mira.dashboard.auth import AuthMiddleware, create_auth_router
 from mira.dashboard.db import AppDatabase
 from mira.index.relationships import RelationshipStore
@@ -184,6 +185,7 @@ class ReviewEventModel(BaseModel):
     files_reviewed: int
     lines_changed: int
     tokens_used: int
+    cost_usd: float = 0.0
     duration_ms: int
     categories: str
     created_at: float
@@ -198,6 +200,7 @@ class ReviewStatsModel(BaseModel):
     total_files_reviewed: int
     total_lines_changed: int
     total_tokens: int
+    total_cost_usd: float = 0.0
     avg_duration_ms: int
     categories: dict[str, int] = {}
     avg_comments_per_pr: float = 0.0
@@ -222,6 +225,17 @@ class ReviewContextModel(BaseModel):
 class ReviewContextCreate(BaseModel):
     title: str
     content: str
+
+
+class RunningReviewModel(BaseModel):
+    repo: str
+    pr_number: int
+    pr_title: str
+    pr_url: str
+    status: str
+    started_at: float
+    finished_at: float = 0.0
+    error: str = ""
 
 
 class OverrideRequest(BaseModel):
@@ -362,6 +376,7 @@ class ModelOption(BaseModel):
 class ModelsResponse(BaseModel):
     indexing_model: str
     review_model: str
+    secondary_review_model: str
     indexing_options: list[ModelOption]
     review_options: list[ModelOption]
     # Extended-thinking effort for reviews ("off"/"low"/"medium"/"high").
@@ -372,6 +387,7 @@ class ModelsResponse(BaseModel):
 class ModelsUpdate(BaseModel):
     indexing_model: str
     review_model: str
+    secondary_review_model: str = ""
     review_thinking_mode: str = "off"
 
 
@@ -390,11 +406,13 @@ def get_models() -> ModelsResponse:
     config = load_config()
     indexing = get_indexing_model(config.llm, _app_db.get_setting("indexing_model"))
     review = get_review_model(config.llm, _app_db.get_setting("review_model"))
+    secondary = _app_db.get_setting("secondary_review_model") or config.llm.secondary_review_model or ""
     thinking = get_review_thinking_mode(config.llm, _app_db.get_setting("review_thinking_mode"))
 
     return ModelsResponse(
         indexing_model=indexing,
         review_model=review,
+        secondary_review_model=secondary,
         indexing_options=[ModelOption(**m) for m in INDEXING_MODELS],
         review_options=[ModelOption(**m) for m in REVIEW_MODELS],
         review_thinking_mode=thinking or "off",
@@ -521,8 +539,14 @@ def set_models(body: ModelsUpdate) -> dict:
             status_code=400,
             detail=f"{body.review_thinking_mode!r} is not a valid thinking mode.",
         )
+    if body.secondary_review_model and not is_supported(body.secondary_review_model, purpose="review"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{body.secondary_review_model!r} is not a supported review model.",
+        )
     _app_db.set_setting("indexing_model", body.indexing_model)
     _app_db.set_setting("review_model", body.review_model)
+    _app_db.set_setting("secondary_review_model", body.secondary_review_model or "")
     # Clear "off" to "" rather than persisting the literal — "off" is the
     # default, and a stored value would shadow a mira.yaml
     # `review_reasoning_effort` override. "" (not None — the column is NOT NULL)
@@ -1883,6 +1907,7 @@ def get_org_stats(period: str = "") -> OrgStatsModel:
         "total_files_reviewed": 0,
         "total_lines_changed": 0,
         "total_tokens": 0,
+        "total_cost_usd": 0.0,
         "avg_duration_ms": 0,
         "categories": {},
         "avg_comments_per_pr": 0.0,
@@ -1903,6 +1928,7 @@ def get_org_stats(period: str = "") -> OrgStatsModel:
             agg_stats["total_files_reviewed"] += stats["total_files_reviewed"]
             agg_stats["total_lines_changed"] += stats["total_lines_changed"]
             agg_stats["total_tokens"] += stats["total_tokens"]
+            agg_stats["total_cost_usd"] += stats.get("total_cost_usd", 0.0)
             for cat, cnt in stats.get("categories", {}).items():
                 agg_stats["categories"][cat] = agg_stats["categories"].get(cat, 0) + cnt
             if stats["total_reviews"] > 0:
@@ -1947,6 +1973,7 @@ class TimeSeriesPoint(BaseModel):
     suggestions: int = 0
     lines_changed: int = 0
     tokens_used: int = 0
+    cost_usd: float = 0.0
     categories: dict[str, int] = {}
 
 
@@ -1968,6 +1995,7 @@ def get_timeseries(period: str = "day") -> list[TimeSeriesPoint]:
                         "suggestions": e.suggestions,
                         "lines": e.lines_changed,
                         "tokens": e.tokens_used,
+                        "cost": e.cost_usd,
                         "categories": e.categories,
                     }
                 )
@@ -1990,6 +2018,7 @@ def get_timeseries(period: str = "day") -> list[TimeSeriesPoint]:
             "suggestions": 0,
             "lines_changed": 0,
             "tokens_used": 0,
+            "cost_usd": 0.0,
             "categories": {},
         }
     )
@@ -2011,6 +2040,7 @@ def get_timeseries(period: str = "day") -> list[TimeSeriesPoint]:
         b["suggestions"] += ev["suggestions"]
         b["lines_changed"] += ev["lines"]
         b["tokens_used"] += ev["tokens"]
+        b["cost_usd"] += ev.get("cost", 0.0)
         for c in (ev["categories"] or "").split(","):
             c = c.strip()
             if c:
@@ -2141,6 +2171,83 @@ async def cancel_index(owner: str, repo: str) -> dict:
     return {"status": "not_indexing"}
 
 
+class PaginatedReviewEvents(BaseModel):
+    items: list[ReviewEventModel]
+    total: int
+    limit: int
+    offset: int
+
+
+class PaginatedReviews(BaseModel):
+    items: list[RunningReviewModel]
+    total: int
+    limit: int
+    offset: int
+
+
+@router.get("/api/reviews", response_model=PaginatedReviews)
+def list_all_reviews(limit: int = 20, offset: int = 0) -> PaginatedReviews:
+    """Org-wide reviews: in-memory active + recent completed from every repo."""
+    seen: set[tuple[str, int]] = set()
+
+    # In-memory active/recent jobs first
+    items: list[RunningReviewModel] = []
+    for j in tracker.get_all():
+        key = (j.repo, j.pr_number)
+        seen.add(key)
+        items.append(
+            RunningReviewModel(
+                repo=j.repo,
+                pr_number=j.pr_number,
+                pr_title=j.pr_title,
+                pr_url=j.pr_url,
+                status=j.status,
+                started_at=j.started_at,
+                finished_at=j.finished_at,
+                error=j.error,
+            )
+        )
+
+    # DB-backed review events from all repos (completed history)
+    for repo_record in _app_db.list_repos():
+        try:
+            store = IndexStore.open(repo_record.owner, repo_record.repo)
+            try:
+                for e in store.list_review_events(limit=500):
+                    key = (f"{repo_record.owner}/{repo_record.repo}", e.pr_number)
+                    if key not in seen:
+                        seen.add(key)
+                        items.append(
+                            RunningReviewModel(
+                                repo=f"{repo_record.owner}/{repo_record.repo}",
+                                pr_number=e.pr_number,
+                                pr_title=e.pr_title,
+                                pr_url=e.pr_url,
+                                status="completed",
+                                started_at=e.created_at,
+                                finished_at=e.created_at + (e.duration_ms / 1000),
+                            )
+                        )
+            finally:
+                store.close()
+        except Exception as exc:
+            logger.warning(
+                "Failed to load review events for %s/%s: %s",
+                repo_record.owner,
+                repo_record.repo,
+                exc,
+            )
+
+    items.sort(key=lambda r: r.started_at, reverse=True)
+    total = len(items)
+    return PaginatedReviews(
+        items=items[offset : offset + limit],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @router.get("/api/repos/{owner}/{repo}/reviews", response_model=list[ReviewEventModel])
 def list_reviews(owner: str, repo: str, limit: int = 50) -> list[ReviewEventModel]:
     """List recent review events for a repo."""
@@ -2159,12 +2266,55 @@ def list_reviews(owner: str, repo: str, limit: int = 50) -> list[ReviewEventMode
                 files_reviewed=e.files_reviewed,
                 lines_changed=e.lines_changed,
                 tokens_used=e.tokens_used,
+                cost_usd=e.cost_usd,
                 duration_ms=e.duration_ms,
                 categories=e.categories,
                 created_at=e.created_at,
             )
             for e in events
         ]
+
+
+@router.get("/api/reviews/events", response_model=PaginatedReviewEvents)
+def list_recent_review_events(limit: int = 20, offset: int = 0) -> PaginatedReviewEvents:
+    """Return the most recent review events across all repos."""
+    FETCH = 500
+    all_events: list[ReviewEventModel] = []
+    for repo_record in _app_db.list_repos():
+        try:
+            with _open_store(repo_record.owner, repo_record.repo) as store:
+                for e in store.list_review_events(limit=FETCH):
+                    all_events.append(
+                        ReviewEventModel(
+                            id=e.id,
+                            pr_number=e.pr_number,
+                            pr_title=e.pr_title,
+                            pr_url=e.pr_url,
+                            comments_posted=e.comments_posted,
+                            blockers=e.blockers,
+                            warnings=e.warnings,
+                            suggestions=e.suggestions,
+                            files_reviewed=e.files_reviewed,
+                            lines_changed=e.lines_changed,
+                            tokens_used=e.tokens_used,
+                            cost_usd=e.cost_usd,
+                            duration_ms=e.duration_ms,
+                            categories=e.categories,
+                            created_at=e.created_at,
+                        )
+                    )
+        except Exception as exc:
+            logger.warning(
+                "Failed to load review events for %s/%s: %s",
+                repo_record.owner,
+                repo_record.repo,
+                exc,
+            )
+            continue
+    all_events.sort(key=lambda e: e.created_at, reverse=True)
+    total = len(all_events)
+    items = all_events[offset : offset + limit]
+    return PaginatedReviewEvents(items=items, total=total, limit=limit, offset=offset)
 
 
 # Wire dashboard routes + middleware onto the standalone app, after all
