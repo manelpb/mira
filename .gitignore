@@ -64,3 +64,4 @@ ui/mira/.vite/
 
 # Claude Code workspace artifacts
 .claude/
+.worktrees/
