@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { api, type PaginatedReviewEvents, type PaginatedReviews, type ReviewEventModel } from "@/lib/api"
+import { api, type PaginatedReviewEvents, type PaginatedReviews } from "@/lib/api"
 import { useDocumentTitle } from "@/lib/hooks"
 
 const PER_PAGE = 20
