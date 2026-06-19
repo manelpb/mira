@@ -5,6 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mira.dashboard.db import AppDatabase
 from mira.index.store import DirectorySummary, ExternalRef, FileSummary, IndexStore, SymbolInfo
 
 INDEX_DIR = os.environ.get("MIRA_INDEX_DIR", "/tmp/mira-demo-indexes")
@@ -14,6 +15,24 @@ def seed():
     org = "acme-corp"
     org_dir = os.path.join(INDEX_DIR, org)
     os.makedirs(org_dir, exist_ok=True)
+
+    # Register repos in the dashboard's AppDatabase so they appear in the UI.
+    repo_names = [
+        "payments-service",
+        "payments-worker",
+        "checkout-flow",
+        "shared-lib",
+        "infra-modules",
+        "solar-monitoring.api",
+        "solar-monitoring.ingest",
+        "docs-site",
+    ]
+    app_db_path = os.path.join(INDEX_DIR, "_app.db")
+    db = AppDatabase(app_db_path)
+    for name in repo_names:
+        db.register_repo(org, name)
+        db.set_repo_status(org, name, "ready")
+    db.close()
 
     # ── payments-service ──
     s = IndexStore(os.path.join(org_dir, "payments-service.db"))
@@ -600,6 +619,9 @@ def seed():
             files = random.randint(1, 15)
             lines = random.randint(20, 800)
             tokens = random.randint(2000, 20000)
+            # Estimate cost at Sonnet 4.6 pricing: $3/M input, $15/M output
+            # ~70% input, ~30% output split
+            cost_usd = round(tokens * (0.7 * 3 + 0.3 * 15) / 1_000_000, 6)
             duration = random.randint(3000, 30000)
             cats = (
                 ",".join(random.sample(all_categories, min(comments, random.randint(1, 4))))
@@ -619,14 +641,16 @@ def seed():
                 files_reviewed=files,
                 lines_changed=lines,
                 tokens_used=tokens,
+                cost_usd=cost_usd,
                 duration_ms=duration,
                 categories=cats,
                 created_at=event_time,
             )
         s.close()
 
+    total_reviews = sum(random.randint(20, 45) for _ in review_repos)
     print(f"Demo data seeded at {INDEX_DIR}")
-    print(f"  8 repos, {sum(random.randint(8, 20) for _ in review_repos)} review events")
+    print(f"  8 repos, {total_reviews} review events")
 
 
 if __name__ == "__main__":

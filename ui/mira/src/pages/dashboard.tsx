@@ -253,6 +253,9 @@ export function DashboardPage() {
                 <div className="text-muted-foreground">
                   {rs ? fmt(rs.total_tokens) : "0"} tokens used
                 </div>
+                <div className="text-muted-foreground">
+                  {rs ? `$${rs.total_cost_usd.toFixed(4)}` : "$0"} total cost
+                </div>
               </>
             )}
           </CardFooter>
@@ -446,6 +449,7 @@ type TSPoint = {
   suggestions: number
   lines_changed: number
   tokens_used: number
+  cost_usd: number
   categories: Record<string, number>
 }
 

@@ -15,6 +15,7 @@ from tenacity import (
 
 from mira.config import LLMConfig
 from mira.exceptions import LLMError
+from mira.llm.registry import pricing as _model_pricing
 from mira.llm.provider import SUBMIT_REVIEW_TOOL, SUBMIT_WALKTHROUGH_TOOL
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,7 @@ class BedrockProvider:
         self._client = session.client("bedrock-runtime")
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
+        self.total_cost_usd = 0.0
         logger.info(
             "Bedrock provider initialized: region=%s, model=%s",
             config.region,
@@ -196,6 +198,8 @@ class BedrockProvider:
         output_tokens = usage.get("outputTokens", 0)
         self.total_prompt_tokens += input_tokens
         self.total_completion_tokens += output_tokens
+        _in, _out = _model_pricing(model)
+        self.total_cost_usd += (input_tokens * _in + output_tokens * _out) / 1_000_000
         logger.info(
             "Bedrock response: model=%s, input_tokens=%d, output_tokens=%d, stop=%s",
             model,
@@ -423,9 +427,10 @@ class BedrockProvider:
         return len(text) // 4
 
     @property
-    def usage(self) -> dict[str, int]:
+    def usage(self) -> dict[str, int | float]:
         return {
             "prompt_tokens": self.total_prompt_tokens,
             "completion_tokens": self.total_completion_tokens,
             "total_tokens": self.total_prompt_tokens + self.total_completion_tokens,
+            "cost_usd": round(self.total_cost_usd, 6),
         }
