@@ -559,4 +559,5 @@ class TestUsage:
             "prompt_tokens": 300,
             "completion_tokens": 130,
             "total_tokens": 430,
+            "cost_usd": 0.00285,
         }
