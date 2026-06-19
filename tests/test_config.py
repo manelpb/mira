@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import mira.config as mira_config
-from mira.config import MiraConfig, find_config_file, load_config, set_global_defaults
+from mira.config import LLMConfig, MiraConfig, find_config_file, load_config, set_global_defaults
 from mira.exceptions import ConfigError
 
 
@@ -170,3 +170,13 @@ class TestGlobalDefaults:
         )
         assert config.review.walkthrough is False
         assert config.review.walkthrough_sequence_diagram is True
+
+
+def test_secondary_review_model_defaults_to_none():
+    cfg = MiraConfig()
+    assert cfg.llm.secondary_review_model is None
+
+
+def test_secondary_review_model_round_trip():
+    cfg = MiraConfig(llm=LLMConfig(secondary_review_model="openai/gpt-4o"))
+    assert cfg.llm.secondary_review_model == "openai/gpt-4o"

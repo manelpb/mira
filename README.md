@@ -211,6 +211,18 @@ filter:
 
 See the [docs](https://docs.miracode.ai/configuration) for the full schema.
 
+### Multi-model review
+
+Run the chunked review pass on two different models in parallel. Findings from both models are union-merged with a confidence boost on cross-model agreement. Off by default — `secondary_review_model` is optional:
+
+```yaml
+llm:
+  model: "anthropic/claude-sonnet-4-6"
+  secondary_review_model: "openai/gpt-4o"  # optional
+```
+
+The walkthrough, security pass, and self-critique stay on the primary. When multi-model is on, the per-PR comment cap (`filter.max_comments`) is doubled so each model gets proportional surface. Cost is roughly 2× the single-model case.
+
 ## Development
 
 ```bash
