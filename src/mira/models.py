@@ -352,6 +352,7 @@ class ReviewResult:
     reviewed_files: int = 0
     skipped_reason: str | None = None
     token_usage: dict[str, int] = field(default_factory=dict)
+    cost_usd: float = 0.0
     walkthrough: WalkthroughResult | None = None
     thread_decisions: list[ThreadDecision] = field(default_factory=list)
     # Surfaced in the walkthrough banner so @mira-bot review-rest can target the rest.

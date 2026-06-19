@@ -58,7 +58,10 @@ def _format_text(result: ReviewResult) -> str:
 
     lines.append(f"Reviewed {result.reviewed_files} files, {len(result.comments)} comments.")
     if result.token_usage:
-        lines.append(f"Tokens used: {result.token_usage.get('total_tokens', 0)}")
+        tokens = result.token_usage.get("total_tokens", 0)
+        cost = result.cost_usd
+        cost_str = f" (${cost:.4f})" if cost else ""
+        lines.append(f"Tokens used: {tokens}{cost_str}")
 
     return "\n".join(lines)
 
@@ -111,6 +114,7 @@ def _format_json(result: ReviewResult) -> str:
         ],
         "reviewed_files": result.reviewed_files,
         "token_usage": result.token_usage,
+        "cost_usd": result.cost_usd,
     }
     return json.dumps(data, indent=2)
 

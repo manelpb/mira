@@ -157,6 +157,7 @@ export interface ReviewEventModel {
   files_reviewed: number
   lines_changed: number
   tokens_used: number
+  cost_usd: number
   duration_ms: number
   categories: string
   created_at: number
@@ -171,6 +172,7 @@ export interface ReviewStatsModel {
   total_files_reviewed: number
   total_lines_changed: number
   total_tokens: number
+  total_cost_usd: number
   avg_duration_ms: number
   categories: Record<string, number>
   avg_comments_per_pr: number
@@ -216,6 +218,13 @@ export interface RunningReviewModel {
   started_at: number
   finished_at: number
   error: string
+}
+
+export interface PaginatedReviewEvents {
+  items: ReviewEventModel[]
+  total: number
+  limit: number
+  offset: number
 }
 
 export interface PaginatedReviews {

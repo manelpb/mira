@@ -19,6 +19,7 @@ export const statsApi = {
         suggestions: number
         lines_changed: number
         tokens_used: number
+        cost_usd: number
         categories: Record<string, number>
       }[]
     >(`/api/stats/timeseries?period=${period}`),
