@@ -139,6 +139,11 @@ class ReviewComment:
     # Which pipeline pass produced this ("main" or "security") — lets eval
     # artifacts attribute FP share per pass. Not posted anywhere.
     source_pass: str = "main"
+    # Which model produced this finding ("primary", "secondary", or empty
+    # string for pre-multi-model code paths). Audit-only — used in the
+    # event stream and the cross_model_merge log; excluded from the
+    # GitHub comment because the posting code picks fields explicitly.
+    _source_model: str = ""
 
 
 def _format_stats_breakdown(stats: dict[Severity, int]) -> str:
