@@ -92,6 +92,12 @@ async def handle_pull_request(
         pr_url = f"https://github.com/{owner}/{repo}/pull/{number}"
         repo_full = f"{owner}/{repo}"
 
+        # Atomically claim the slot — avoids stacking redundant runs when
+        # two concurrent webhooks arrive. Returns False if already reviewing.
+        if not review_tracker.try_start(repo_full, number, pr.get("title", ""), pr_url):
+            logger.info("Review already in progress for PR %s, skipping", pr_url)
+            return
+
         config = load_config()
         from mira.dashboard.models_config import llm_config_for
 
@@ -117,7 +123,6 @@ async def handle_pull_request(
         is_indexed = bool(repo_record and repo_record.status == "ready")
 
         logger.info("Reviewing PR %s (indexed=%s)", pr_url, is_indexed)
-        review_tracker.start(repo_full, number, pr.get("title", ""), pr_url)
         try:
             result = await engine.review_pr(pr_url)
             review_tracker.complete(repo_full, number)
@@ -244,6 +249,9 @@ async def handle_comment(
                 bot_name=bot_name,
                 indexing_llm=indexing_llm,
             )
+            if not review_tracker.try_start(repo_full, number, payload["issue"].get("title", ""), pr_url):
+                logger.info("Review already in progress for PR %s, skipping", pr_url)
+                return
             engine._review_only_paths = set(progress.skipped_paths)  # type: ignore[attr-defined]
             logger.info(
                 "review-rest triggered for PR %s by @%s — %d remaining file(s)",
@@ -251,7 +259,6 @@ async def handle_comment(
                 comment_user,
                 len(progress.skipped_paths),
             )
-            review_tracker.start(repo_full, number, payload["issue"].get("title", ""), pr_url)
             try:
                 await engine.review_pr(pr_url)
                 review_tracker.complete(repo_full, number)
@@ -267,8 +274,10 @@ async def handle_comment(
                 bot_name=bot_name,
                 indexing_llm=indexing_llm,
             )
+            if not review_tracker.try_start(repo_full, number, payload["issue"].get("title", ""), pr_url):
+                logger.info("Review already in progress for PR %s, skipping", pr_url)
+                return
             logger.info("Re-review triggered for PR %s by @%s", pr_url, comment_user)
-            review_tracker.start(repo_full, number, payload["issue"].get("title", ""), pr_url)
             try:
                 await engine.review_pr(pr_url)
                 review_tracker.complete(repo_full, number)

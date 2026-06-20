@@ -47,6 +47,24 @@ class ReviewTracker:
                 started_at=time.time(),
             )
 
+    def try_start(self, repo: str, pr_number: int, pr_title: str, pr_url: str) -> bool:
+        """Atomically check and register. Returns False if already reviewing."""
+        with self._lock:
+            self._evict_old()
+            key = self._key(repo, pr_number)
+            existing = self._jobs.get(key)
+            if existing and existing.status == "reviewing":
+                return False
+            self._jobs[key] = ReviewStatus(
+                repo=repo,
+                pr_number=pr_number,
+                pr_title=pr_title,
+                pr_url=pr_url,
+                status="reviewing",
+                started_at=time.time(),
+            )
+            return True
+
     def complete(self, repo: str, pr_number: int) -> None:
         with self._lock:
             key = self._key(repo, pr_number)
