@@ -510,6 +510,12 @@ export function SettingsPage() {
                   "Blast radius",
                   "Lists dependent repositories that import code touched by this PR in the walkthrough comment."
                 )}
+                {boolField(
+                  "review",
+                  "review_on_synchronize",
+                  "Review on every push",
+                  "When enabled, Mira reviews every new commit pushed to a PR. Disable to only review on PR open or manual @bot_name review."
+                )}
                 {numField(
                   "review",
                   "max_concurrent_chunks",

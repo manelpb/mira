@@ -734,7 +734,6 @@ version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
-    { name = "fastapi" },
     { name = "httpx" },
     { name = "jinja2" },
     { name = "pydantic" },
@@ -767,18 +766,11 @@ serve = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.35" },
     { name = "click", specifier = ">=8.1" },
     { name = "cryptography", marker = "extra == 'dev'", specifier = ">=42.0" },
-    { name = "fastapi", specifier = ">=0.136.1" },
     { name = "fastapi", marker = "extra == 'serve'", specifier = ">=0.110" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1" },
@@ -801,12 +793,6 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'serve'", specifier = ">=0.28" },
 ]
 provides-extras = ["dev", "serve", "bedrock"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=9.0.3" },
-    { name = "pytest-asyncio", specifier = ">=0.23.0" },
-]
 
 [[package]]
 name = "mypy"

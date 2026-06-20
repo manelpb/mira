@@ -166,6 +166,13 @@ class ReviewConfig(BaseModel):
     # skip the relationship-store lookup and trim the walkthrough.
     blast_radius: bool = True
 
+    # Auto-review on every push (`synchronize` event). When False, Mira only
+    # reviews when the PR is opened or reopened. Subsequent commits are
+    # ignored unless you comment `@bot_name review` to trigger a manual pass.
+    # Disabling this saves tokens and reduces noise when you batch commits
+    # locally before pushing — only the final diff gets reviewed.
+    review_on_synchronize: bool = True
+
 
 class IndexConfig(BaseModel):
     # Skip indexing any file larger than this (bytes). Generated SDKs, vendored
