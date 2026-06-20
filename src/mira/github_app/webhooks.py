@@ -17,6 +17,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from mira.config import load_config as load_mira_config
 from mira.github_app.auth import GitHubAppAuth
 from mira.github_app.handlers import (
     _PAUSE_KEYWORDS,
@@ -157,6 +158,25 @@ def create_app(
                     status_code=200,
                     media_type="application/json",
                 )
+
+            if action == "synchronize":
+                try:
+                    cfg = load_mira_config()
+                    if not cfg.review.review_on_synchronize:
+                        pr_full = payload.get("repository", {}).get("full_name", "")
+                        pr_num = payload.get("pull_request", {}).get("number", 0)
+                        logger.info(
+                            "review_on_synchronize disabled, skipping %s #%s",
+                            pr_full,
+                            pr_num,
+                        )
+                        return Response(
+                            content='{"status": "skipped"}',
+                            status_code=200,
+                            media_type="application/json",
+                        )
+                except Exception:
+                    logger.debug("load_config failed, falling through to review")
 
             background_tasks.add_task(handle_pull_request, payload, app_auth, bot_name)
             return Response(
