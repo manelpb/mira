@@ -181,6 +181,7 @@ export interface ReviewStatsModel {
   total_files_reviewed: number
   total_lines_changed: number
   total_tokens: number
+  total_cost_usd: number
   avg_duration_ms: number
   categories: Record<string, number>
   avg_comments_per_pr: number
