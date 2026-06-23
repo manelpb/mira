@@ -15,8 +15,8 @@ from tenacity import (
 
 from mira.config import LLMConfig
 from mira.exceptions import LLMError
-from mira.llm.registry import pricing as _model_pricing
 from mira.llm.provider import SUBMIT_REVIEW_TOOL, SUBMIT_WALKTHROUGH_TOOL
+from mira.llm.registry import pricing as _model_pricing
 
 logger = logging.getLogger(__name__)
 

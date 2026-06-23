@@ -296,7 +296,9 @@ class IndexStore(_StoreSharedMixin):
         # Lightweight migration for cost_usd column added post-schema.
         rev_cols = {r[1] for r in self._conn.execute("PRAGMA table_info(review_events)").fetchall()}
         if "cost_usd" not in rev_cols:
-            self._conn.execute("ALTER TABLE review_events ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0.0")
+            self._conn.execute(
+                "ALTER TABLE review_events ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0.0"
+            )
         self._conn.commit()
 
     @classmethod
