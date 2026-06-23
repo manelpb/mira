@@ -209,6 +209,7 @@ async def handle_comment(
         repo = payload["repository"]["name"]
         number = payload["issue"]["number"]
         pr_url = f"https://github.com/{owner}/{repo}/pull/{number}"
+        repo_full = f"{owner}/{repo}"
 
         config = load_config()
         from mira.dashboard.models_config import llm_config_for
