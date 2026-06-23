@@ -330,7 +330,7 @@ export function DashboardPage() {
       </div>
 
       {/* Cost breakdown */}
-      <CostBreakdownCard />
+      <CostBreakdownCard period={period} />
 
       {/* Category bar chart — full width */}
       {periodStats && Object.keys(periodStats.categories).length > 0 && (
@@ -576,88 +576,53 @@ function CategoryBarChart({ categories }: { categories: Record<string, number> }
 
 type CostPoint = { date: string; cost_usd: number }
 
-function CostBreakdownCard() {
-  const [weekly, setWeekly] = useState<CostPoint[] | null>(null)
-  const [monthly, setMonthly] = useState<CostPoint[] | null>(null)
+function CostBreakdownCard({ period }: { period: "day" | "week" | "month" }) {
+  const [data, setData] = useState<CostPoint[] | null>(null)
 
   useEffect(() => {
-    api.getTimeseries("week").then((d) => setWeekly(d))
-    api.getTimeseries("month").then((d) => setMonthly(d))
-  }, [])
+    api.getTimeseries(period).then(setData)
+  }, [period])
 
-  const totalWeekly = weekly?.reduce((s, p) => s + p.cost_usd, 0) ?? 0
-  const totalMonthly = monthly?.reduce((s, p) => s + p.cost_usd, 0) ?? 0
+  const label = period === "day" ? "Day" : period === "week" ? "Week" : "Month"
+  const total = data?.reduce((s, p) => s + p.cost_usd, 0) ?? 0
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Cost Breakdown</CardTitle>
-        <CardDescription>Aggregate cost by week and month</CardDescription>
+        <CardDescription>Aggregate cost by {label.toLowerCase()}</CardDescription>
       </CardHeader>
       <CardContent>
-        {!weekly && !monthly ? (
+        {!data ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : (
-          <div className="space-y-6">
-            <div>
-              <h3 className="mb-2 text-sm font-medium text-muted-foreground">
-                By Week (${totalWeekly.toFixed(4)} total)
-              </h3>
-              {weekly && weekly.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Week</TableHead>
-                      <TableHead className="text-right">Cost</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {weekly.map((p) => (
-                      <TableRow key={p.date}>
-                        <TableCell className="tabular-nums text-muted-foreground">
-                          {p.date}
-                        </TableCell>
-                        <TableCell className="tabular-nums text-right font-medium">
-                          ${p.cost_usd.toFixed(4)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="text-sm text-muted-foreground">No data</p>
-              )}
-            </div>
-            <div>
-              <h3 className="mb-2 text-sm font-medium text-muted-foreground">
-                By Month (${totalMonthly.toFixed(4)} total)
-              </h3>
-              {monthly && monthly.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Month</TableHead>
-                      <TableHead className="text-right">Cost</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {monthly.map((p) => (
-                      <TableRow key={p.date}>
-                        <TableCell className="tabular-nums text-muted-foreground">
-                          {p.date}
-                        </TableCell>
-                        <TableCell className="tabular-nums text-right font-medium">
-                          ${p.cost_usd.toFixed(4)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="text-sm text-muted-foreground">No data</p>
-              )}
-            </div>
+        ) : data.length > 0 ? (
+          <div>
+            <h3 className="mb-2 text-sm font-medium text-muted-foreground">
+              By {label} (${total.toFixed(4)} total)
+            </h3>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{label}</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.map((p) => (
+                  <TableRow key={p.date}>
+                    <TableCell className="tabular-nums text-muted-foreground">
+                      {p.date}
+                    </TableCell>
+                    <TableCell className="tabular-nums text-right font-medium">
+                      ${p.cost_usd.toFixed(4)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No data</p>
         )}
       </CardContent>
     </Card>
