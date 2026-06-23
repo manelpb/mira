@@ -696,7 +696,7 @@ export function ActivityPage() {
               </Button>
             </div>
 
-            <div className="flex-1 space-y-6 overflow-y-auto p-6">
+            <div className="themed-scrollbar flex-1 space-y-6 overflow-y-auto p-6">
               {/* Summary — findings + totals across all review passes */}
               <div>
                 <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">
