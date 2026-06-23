@@ -26,14 +26,6 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { api } from "@/lib/api"
 import { useAsync, useDocumentTitle } from "@/lib/hooks"
 
@@ -327,10 +319,23 @@ export function DashboardPage() {
             )}
           </CardContent>
         </Card>
-      </div>
 
-      {/* Cost breakdown */}
-      <CostBreakdownCard period={period} />
+        <Card>
+          <CardHeader>
+            <CardTitle>Cost</CardTitle>
+            <CardDescription>LLM spend per period</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {timeseriesLoading ? (
+              <ChartSkeleton />
+            ) : timeseries && timeseries.length > 0 ? (
+              <CostChart key={period} data={timeseries} useBars={period !== "day"} />
+            ) : (
+              <Empty />
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Category bar chart — full width */}
       {periodStats && Object.keys(periodStats.categories).length > 0 && (
@@ -574,60 +579,37 @@ function CategoryBarChart({ categories }: { categories: Record<string, number> }
   )
 }
 
-type CostPoint = { date: string; cost_usd: number }
-
-function CostBreakdownCard({ period }: { period: "day" | "week" | "month" }) {
-  const [data, setData] = useState<CostPoint[] | null>(null)
-
-  useEffect(() => {
-    api.getTimeseries(period).then(setData)
-  }, [period])
-
-  const label = period === "day" ? "Day" : period === "week" ? "Week" : "Month"
-  const total = data?.reduce((s, p) => s + p.cost_usd, 0) ?? 0
-
+function CostChart({ data, useBars }: { data: TSPoint[]; useBars: boolean }) {
+  const xAxis = (
+    <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={formatDate} />
+  )
+  if (useBars) {
+    return (
+      <ChartContainer config={costConfig} className="h-[250px] w-full">
+        <BarChart data={data}>
+          <CartesianGrid vertical={false} />
+          {xAxis}
+          <ChartTooltip content={<ChartTooltipContent />} />
+          <Bar dataKey="cost_usd" fill="var(--color-cost_usd)" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ChartContainer>
+    )
+  }
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Cost Breakdown</CardTitle>
-        <CardDescription>Aggregate cost by {label.toLowerCase()}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {!data ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : data.length > 0 ? (
-          <div>
-            <h3 className="mb-2 text-sm font-medium text-muted-foreground">
-              By {label} (${total.toFixed(4)} total)
-            </h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{label}</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.map((p) => (
-                  <TableRow key={p.date}>
-                    <TableCell className="tabular-nums text-muted-foreground">
-                      {p.date}
-                    </TableCell>
-                    <TableCell className="tabular-nums text-right font-medium">
-                      ${p.cost_usd.toFixed(4)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No data</p>
-        )}
-      </CardContent>
-    </Card>
+    <ChartContainer config={costConfig} className="h-[250px] w-full">
+      <AreaChart data={data}>
+        <CartesianGrid vertical={false} />
+        {xAxis}
+        <ChartTooltip content={<ChartTooltipContent />} />
+        <Area type="monotone" dataKey="cost_usd" stroke="var(--color-cost_usd)" fill="var(--color-cost_usd)" fillOpacity={0.15} strokeWidth={2} />
+      </AreaChart>
+    </ChartContainer>
   )
 }
+
+const costConfig = {
+  cost_usd: { label: "Cost", color: "var(--chart-5)" },
+} satisfies ChartConfig
 
 function SecurityAlertsCard({
   summary,
