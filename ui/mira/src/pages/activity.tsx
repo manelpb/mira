@@ -171,6 +171,7 @@ type SortKey =
   | "last_reviewed"
   | "comments"
   | "severity"
+  | "cost"
 type SortDir = "asc" | "desc"
 
 // Rank by severity: blockers dominate, then warnings, then suggestions.
@@ -198,6 +199,8 @@ function prSortValue(g: PRGroup, key: SortKey): string | number {
         warnings: g.totalWarnings,
         suggestions: g.totalSuggestions,
       })
+    case "cost":
+      return g.totalCostUsd
   }
 }
 
@@ -545,6 +548,7 @@ export function ActivityPage() {
                     <SortHead label="Last reviewed" sortKey="last_reviewed" sort={sort} onSort={toggleSort} />
                     <SortHead label="Comments" sortKey="comments" sort={sort} onSort={toggleSort} />
                     <SortHead label="Severity" sortKey="severity" sort={sort} onSort={toggleSort} />
+                    <SortHead label="Cost" sortKey="cost" sort={sort} onSort={toggleSort} />
                     <TableHead>Categories</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -585,6 +589,9 @@ export function ActivityPage() {
                             suggestions: g.totalSuggestions,
                           }}
                         />
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        ${g.totalCostUsd.toFixed(4)}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
