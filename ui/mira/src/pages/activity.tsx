@@ -108,7 +108,10 @@ type PRGroup = {
 function groupByPR(events: ActivityEventModel[]): PRGroup[] {
   const map = new Map<string, ActivityEventModel[]>()
   for (const e of events) {
-    const key = e.pr_url || `${e.owner}/${e.repo}#${e.pr_number}`
+    // Canonical key — never key off pr_url, which can be an empty string for
+    // some events and a real URL for others on the same PR (the `||` footgun
+    // would split one PR's history into two groups).
+    const key = `${e.owner}/${e.repo}#${e.pr_number}`
     const arr = map.get(key)
     if (arr) arr.push(e)
     else map.set(key, [e])
@@ -166,12 +169,13 @@ type SortKey =
   | "severity"
 type SortDir = "asc" | "desc"
 
-// Rank a review by severity: blockers dominate, then warnings, then suggestions.
-function severityWeight(e: ActivityEventModel) {
-  return e.blockers * 1_000_000 + e.warnings * 1_000 + e.suggestions
+// Rank by severity: blockers dominate, then warnings, then suggestions.
+function severityWeight(c: { blockers: number; warnings: number; suggestions: number }) {
+  return c.blockers * 1_000_000 + c.warnings * 1_000 + c.suggestions
 }
 
-// Table columns reflect the PR's current state — i.e. its latest review pass.
+// Table columns are PR-level aggregates (cumulative across passes), matching
+// the detail panel's summary.
 function prSortValue(g: PRGroup, key: SortKey): string | number {
   switch (key) {
     case "repo":
@@ -183,9 +187,13 @@ function prSortValue(g: PRGroup, key: SortKey): string | number {
     case "last_reviewed":
       return g.lastReviewedAt
     case "comments":
-      return g.latest.comments_posted
+      return g.totalComments
     case "severity":
-      return severityWeight(g.latest)
+      return severityWeight({
+        blockers: g.totalBlockers,
+        warnings: g.totalWarnings,
+        suggestions: g.totalSuggestions,
+      })
   }
 }
 
@@ -563,10 +571,16 @@ export function ActivityPage() {
                         {relativeTime(g.lastReviewedAt)}
                       </TableCell>
                       <TableCell className="tabular-nums">
-                        {g.latest.comments_posted}
+                        {g.totalComments}
                       </TableCell>
                       <TableCell>
-                        <SeverityBadges counts={g.latest} />
+                        <SeverityBadges
+                          counts={{
+                            blockers: g.totalBlockers,
+                            warnings: g.totalWarnings,
+                            suggestions: g.totalSuggestions,
+                          }}
+                        />
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
