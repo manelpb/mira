@@ -102,6 +102,7 @@ type PRGroup = {
   totalWarnings: number
   totalSuggestions: number
   totalTokens: number
+  totalCostUsd: number
   totalDurationMs: number
 }
 
@@ -126,6 +127,7 @@ function groupByPR(events: ActivityEventModel[]): PRGroup[] {
     let totalWarnings = 0
     let totalSuggestions = 0
     let totalTokens = 0
+    let totalCostUsd = 0
     let totalDurationMs = 0
     for (const r of reviews) {
       splitCategories(r.categories).forEach((c) => cats.add(c))
@@ -134,6 +136,7 @@ function groupByPR(events: ActivityEventModel[]): PRGroup[] {
       totalWarnings += r.warnings
       totalSuggestions += r.suggestions
       totalTokens += r.tokens_used
+      totalCostUsd += r.cost_usd
       totalDurationMs += r.duration_ms
     }
     groups.push({
@@ -154,6 +157,7 @@ function groupByPR(events: ActivityEventModel[]): PRGroup[] {
       totalWarnings,
       totalSuggestions,
       totalTokens,
+      totalCostUsd,
       totalDurationMs,
     })
   }
@@ -717,6 +721,7 @@ export function ActivityPage() {
                 <Stat label="Files reviewed" value={selected.latest.files_reviewed} />
                 <Stat label="Lines changed" value={selected.latest.lines_changed.toLocaleString()} />
                 <Stat label="Tokens used" value={selected.totalTokens.toLocaleString()} />
+                <Stat label="Total cost" value={`$${selected.totalCostUsd.toFixed(4)}`} />
                 <Stat label="Total time" value={`${(selected.totalDurationMs / 1000).toFixed(1)}s`} />
               </dl>
 
@@ -793,7 +798,7 @@ function ReviewTimeline({ reviews }: { reviews: ActivityEventModel[] }) {
 
               <div className="mt-2 text-xs text-muted-foreground">
                 {plural(r.comments_posted, "comment")} · {r.lines_changed.toLocaleString()} lines ·{" "}
-                {r.tokens_used.toLocaleString()} tokens · {(r.duration_ms / 1000).toFixed(1)}s
+                {r.tokens_used.toLocaleString()} tokens · ${r.cost_usd.toFixed(4)} · {(r.duration_ms / 1000).toFixed(1)}s
               </div>
             </div>
           </li>
