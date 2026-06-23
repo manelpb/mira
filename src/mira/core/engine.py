@@ -617,6 +617,7 @@ class ReviewEngine:
                 files_reviewed=result.reviewed_files,
                 lines_changed=_lines_changed,
                 tokens_used=result.token_usage.get("total_tokens", 0),
+                cost_usd=result.cost_usd,
                 duration_ms=duration,
                 categories=categories,
             )
@@ -1141,12 +1142,17 @@ class ReviewEngine:
 
         walkthrough = await walkthrough_task
 
+        llm_cost = self.llm.usage.get("cost_usd", 0)
+        indexing_cost = 0
+        if self.indexing_llm is not self.llm:
+            indexing_cost = self.indexing_llm.usage.get("cost_usd", 0)
         return ReviewResult(
             comments=final_comments,
             key_issues=all_key_issues,
             summary=summary,
             reviewed_files=len(filtered),
             token_usage=self.llm.usage,
+            cost_usd=round(float(llm_cost) + float(indexing_cost), 6),
             walkthrough=walkthrough,
             reviewed_paths=selected_paths,
             skipped_paths=skipped_paths_only,

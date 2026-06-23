@@ -203,8 +203,9 @@ class ReviewEvent:
     files_reviewed: int
     lines_changed: int
     tokens_used: int
-    duration_ms: int
-    categories: str  # comma-separated: "bug,security,performance"
+    cost_usd: float = 0.0
+    duration_ms: int = 0
+    categories: str = ""  # comma-separated: "bug,security,performance"
     created_at: float = 0.0
 
 
@@ -292,6 +293,10 @@ class IndexStore(_StoreSharedMixin):
         cols = {r[1] for r in self._conn.execute("PRAGMA table_info(files)").fetchall()}
         if "loc" not in cols:
             self._conn.execute("ALTER TABLE files ADD COLUMN loc INTEGER NOT NULL DEFAULT 0")
+        # Lightweight migration for cost_usd column added post-schema.
+        rev_cols = {r[1] for r in self._conn.execute("PRAGMA table_info(review_events)").fetchall()}
+        if "cost_usd" not in rev_cols:
+            self._conn.execute("ALTER TABLE review_events ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0.0")
         self._conn.commit()
 
     @classmethod
@@ -551,6 +556,7 @@ class IndexStore(_StoreSharedMixin):
         files_reviewed: int = 0,
         lines_changed: int = 0,
         tokens_used: int = 0,
+        cost_usd: float = 0.0,
         duration_ms: int = 0,
         categories: str = "",
         created_at: float | None = None,
@@ -559,9 +565,9 @@ class IndexStore(_StoreSharedMixin):
         self._conn.execute(
             "INSERT INTO review_events "
             "(pr_number, pr_title, pr_url, comments_posted, blockers, warnings, "
-            "suggestions, files_reviewed, lines_changed, tokens_used, duration_ms, "
-            "categories, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "suggestions, files_reviewed, lines_changed, tokens_used, cost_usd, "
+            "duration_ms, categories, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 pr_number,
                 pr_title,
@@ -573,6 +579,7 @@ class IndexStore(_StoreSharedMixin):
                 files_reviewed,
                 lines_changed,
                 tokens_used,
+                cost_usd,
                 duration_ms,
                 categories,
                 now,
@@ -592,6 +599,7 @@ class IndexStore(_StoreSharedMixin):
             files_reviewed=files_reviewed,
             lines_changed=lines_changed,
             tokens_used=tokens_used,
+            cost_usd=cost_usd,
             duration_ms=duration_ms,
             categories=categories,
             created_at=now,
@@ -600,8 +608,8 @@ class IndexStore(_StoreSharedMixin):
     def list_review_events(self, limit: int = 100) -> list[ReviewEvent]:
         rows = self._conn.execute(
             "SELECT id, pr_number, pr_title, pr_url, comments_posted, blockers, warnings, "
-            "suggestions, files_reviewed, lines_changed, tokens_used, duration_ms, "
-            "categories, created_at "
+            "suggestions, files_reviewed, lines_changed, tokens_used, cost_usd, "
+            "duration_ms, categories, created_at "
             "FROM review_events ORDER BY created_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
@@ -618,9 +626,10 @@ class IndexStore(_StoreSharedMixin):
                 files_reviewed=r[8],
                 lines_changed=r[9],
                 tokens_used=r[10],
-                duration_ms=r[11],
-                categories=r[12],
-                created_at=r[13],
+                cost_usd=r[11] or 0.0,
+                duration_ms=r[12],
+                categories=r[13],
+                created_at=r[14],
             )
             for r in rows
         ]
@@ -634,7 +643,8 @@ class IndexStore(_StoreSharedMixin):
             "SELECT COUNT(*), COALESCE(SUM(comments_posted),0), COALESCE(SUM(blockers),0), "
             "COALESCE(SUM(warnings),0), COALESCE(SUM(suggestions),0), "
             "COALESCE(SUM(files_reviewed),0), COALESCE(SUM(lines_changed),0), "
-            "COALESCE(SUM(tokens_used),0), COALESCE(AVG(duration_ms),0) "
+            "COALESCE(SUM(tokens_used),0), COALESCE(SUM(cost_usd),0), "
+            "COALESCE(AVG(duration_ms),0) "
             f"FROM review_events{where}",
             params,
         ).fetchone()
@@ -662,7 +672,8 @@ class IndexStore(_StoreSharedMixin):
             "total_files_reviewed": row[5],
             "total_lines_changed": row[6],
             "total_tokens": row[7],
-            "avg_duration_ms": int(row[8]),
+            "total_cost_usd": round(row[8], 4),
+            "avg_duration_ms": int(row[9]),
             "categories": cat_counts,
         }
 

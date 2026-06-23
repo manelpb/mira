@@ -205,6 +205,10 @@ def _get_conn(url: str):
                 cur.execute(
                     "ALTER TABLE files ADD COLUMN IF NOT EXISTS loc INTEGER NOT NULL DEFAULT 0"
                 )
+                cur.execute(
+                    "ALTER TABLE review_events ADD COLUMN IF NOT EXISTS cost_usd "
+                    "DOUBLE PRECISION NOT NULL DEFAULT 0.0"
+                )
             _schema_initialized = True
         return _pg_conn
 
@@ -665,6 +669,7 @@ class PgIndexStore(_StoreSharedMixin):
         files_reviewed: int = 0,
         lines_changed: int = 0,
         tokens_used: int = 0,
+        cost_usd: float = 0.0,
         duration_ms: int = 0,
         categories: str = "",
         created_at: float | None = None,
@@ -674,8 +679,8 @@ class PgIndexStore(_StoreSharedMixin):
             cur.execute(
                 "INSERT INTO review_events (owner, repo, pr_number, pr_title, pr_url, "
                 "comments_posted, blockers, warnings, suggestions, files_reviewed, "
-                "lines_changed, tokens_used, duration_ms, categories, created_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "lines_changed, tokens_used, cost_usd, duration_ms, categories, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "RETURNING id",
                 (
                     self._owner,
@@ -690,6 +695,7 @@ class PgIndexStore(_StoreSharedMixin):
                     files_reviewed,
                     lines_changed,
                     tokens_used,
+                    cost_usd,
                     duration_ms,
                     categories,
                     now,
@@ -708,6 +714,7 @@ class PgIndexStore(_StoreSharedMixin):
             files_reviewed=files_reviewed,
             lines_changed=lines_changed,
             tokens_used=tokens_used,
+            cost_usd=cost_usd,
             duration_ms=duration_ms,
             categories=categories,
             created_at=now,
@@ -716,8 +723,8 @@ class PgIndexStore(_StoreSharedMixin):
     def list_review_events(self, limit: int = 100) -> list[ReviewEvent]:
         rows = self._fetchall(
             "SELECT id, pr_number, pr_title, pr_url, comments_posted, blockers, warnings, "
-            "suggestions, files_reviewed, lines_changed, tokens_used, duration_ms, "
-            "categories, created_at "
+            "suggestions, files_reviewed, lines_changed, tokens_used, cost_usd, "
+            "duration_ms, categories, created_at "
             "FROM review_events WHERE owner=%s AND repo=%s "
             "ORDER BY created_at DESC LIMIT %s",
             (self._owner, self._repo, limit),
@@ -735,9 +742,10 @@ class PgIndexStore(_StoreSharedMixin):
                 files_reviewed=r[8],
                 lines_changed=r[9],
                 tokens_used=r[10],
-                duration_ms=r[11],
-                categories=r[12],
-                created_at=r[13],
+                cost_usd=r[11] or 0.0,
+                duration_ms=r[12],
+                categories=r[13],
+                created_at=r[14],
             )
             for r in rows
         ]
@@ -753,7 +761,8 @@ class PgIndexStore(_StoreSharedMixin):
             "SELECT COUNT(*), COALESCE(SUM(comments_posted),0), COALESCE(SUM(blockers),0), "
             "COALESCE(SUM(warnings),0), COALESCE(SUM(suggestions),0), "
             "COALESCE(SUM(files_reviewed),0), COALESCE(SUM(lines_changed),0), "
-            "COALESCE(SUM(tokens_used),0), COALESCE(AVG(duration_ms),0) "
+            "COALESCE(SUM(tokens_used),0), COALESCE(SUM(cost_usd),0), "
+            "COALESCE(AVG(duration_ms),0) "
             f"FROM review_events WHERE owner=%s AND repo=%s{since_clause}",
             tuple(params),
         )
@@ -782,7 +791,8 @@ class PgIndexStore(_StoreSharedMixin):
             "total_files_reviewed": row[5],
             "total_lines_changed": row[6],
             "total_tokens": row[7],
-            "avg_duration_ms": int(row[8]),
+            "total_cost_usd": round(row[8], 4),
+            "avg_duration_ms": int(row[9]),
             "categories": cat_counts,
         }
 

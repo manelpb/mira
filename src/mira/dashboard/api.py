@@ -184,6 +184,7 @@ class ReviewEventModel(BaseModel):
     files_reviewed: int
     lines_changed: int
     tokens_used: int
+    cost_usd: float = 0.0
     duration_ms: int
     categories: str
     created_at: float
@@ -208,6 +209,7 @@ class ReviewStatsModel(BaseModel):
     total_files_reviewed: int
     total_lines_changed: int
     total_tokens: int
+    total_cost_usd: float = 0.0
     avg_duration_ms: int
     categories: dict[str, int] = {}
     avg_comments_per_pr: float = 0.0
@@ -1893,6 +1895,7 @@ def get_org_stats(period: str = "") -> OrgStatsModel:
         "total_files_reviewed": 0,
         "total_lines_changed": 0,
         "total_tokens": 0,
+        "total_cost_usd": 0.0,
         "avg_duration_ms": 0,
         "categories": {},
         "avg_comments_per_pr": 0.0,
@@ -1913,6 +1916,7 @@ def get_org_stats(period: str = "") -> OrgStatsModel:
             agg_stats["total_files_reviewed"] += stats["total_files_reviewed"]
             agg_stats["total_lines_changed"] += stats["total_lines_changed"]
             agg_stats["total_tokens"] += stats["total_tokens"]
+            agg_stats["total_cost_usd"] += stats.get("total_cost_usd", 0.0)
             for cat, cnt in stats.get("categories", {}).items():
                 agg_stats["categories"][cat] = agg_stats["categories"].get(cat, 0) + cnt
             if stats["total_reviews"] > 0:
@@ -1957,6 +1961,7 @@ class TimeSeriesPoint(BaseModel):
     suggestions: int = 0
     lines_changed: int = 0
     tokens_used: int = 0
+    cost_usd: float = 0.0
     categories: dict[str, int] = {}
 
 
@@ -1978,6 +1983,7 @@ def get_timeseries(period: str = "day") -> list[TimeSeriesPoint]:
                         "suggestions": e.suggestions,
                         "lines": e.lines_changed,
                         "tokens": e.tokens_used,
+                        "cost": e.cost_usd,
                         "categories": e.categories,
                     }
                 )
@@ -2000,6 +2006,7 @@ def get_timeseries(period: str = "day") -> list[TimeSeriesPoint]:
             "suggestions": 0,
             "lines_changed": 0,
             "tokens_used": 0,
+            "cost_usd": 0.0,
             "categories": {},
         }
     )
@@ -2021,6 +2028,7 @@ def get_timeseries(period: str = "day") -> list[TimeSeriesPoint]:
         b["suggestions"] += ev["suggestions"]
         b["lines_changed"] += ev["lines"]
         b["tokens_used"] += ev["tokens"]
+        b["cost_usd"] += ev.get("cost", 0.0)
         for c in (ev["categories"] or "").split(","):
             c = c.strip()
             if c:
@@ -2169,6 +2177,7 @@ def list_reviews(owner: str, repo: str, limit: int = 50) -> list[ReviewEventMode
                 files_reviewed=e.files_reviewed,
                 lines_changed=e.lines_changed,
                 tokens_used=e.tokens_used,
+                cost_usd=e.cost_usd,
                 duration_ms=e.duration_ms,
                 categories=e.categories,
                 created_at=e.created_at,
@@ -2217,6 +2226,7 @@ def list_activity(limit: int = 200, repo: str = "", q: str = "") -> ActivityResp
                             files_reviewed=e.files_reviewed,
                             lines_changed=e.lines_changed,
                             tokens_used=e.tokens_used,
+                            cost_usd=e.cost_usd,
                             duration_ms=e.duration_ms,
                             categories=e.categories,
                             created_at=e.created_at,
